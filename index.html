@@ -948,23 +948,26 @@
     }
 
     function parseDateFromIso(dateISO) {
-      if (!dateISO) return null;
-      let parsed = new Date(dateISO);
-      if (!isNaN(parsed)) {
-        parsed.setHours(0, 0, 0, 0);
-        return parsed;
+      if (!dateISO && dateISO !== 0) return null;
+
+      if (dateISO instanceof Date && !isNaN(dateISO)) {
+        const copy = new Date(dateISO.getTime());
+        copy.setHours(0, 0, 0, 0);
+        return copy;
       }
 
-      const parts = dateISO.split('-');
+      const normalized = String(dateISO).slice(0, 10);
+      const parts = normalized.split('-');
       if (parts.length !== 3) return null;
-      const day = parts[2].slice(0, 2);
-      const normalized = `${parts[0]}-${parts[1]}-${day}`;
-      parsed = new Date(normalized + 'T00:00:00');
-      if (!isNaN(parsed)) {
-        parsed.setHours(0, 0, 0, 0);
-        return parsed;
-      }
-      return null;
+
+      const year = Number(parts[0]);
+      const month = Number(parts[1]) - 1;
+      const day = Number(parts[2]);
+      if ([year, month, day].some(num => !Number.isFinite(num))) return null;
+
+      const parsed = new Date(year, month, day);
+      parsed.setHours(0, 0, 0, 0);
+      return parsed;
     }
 
     function formatDateLabel(dateISO) {
@@ -1118,9 +1121,9 @@
 
       data.forEach(item => {
         const row = document.createElement('tr');
-        const dateObj = new Date(item.data + 'T00:00:00');
-        const dateStr = dateObj.toLocaleDateString('pt-BR');
-        
+        const dateObj = parseDateFromIso(item.data);
+        const dateStr = dateObj ? dateObj.toLocaleDateString('pt-BR') : (item.data || '—');
+
         row.innerHTML = `
           <td>${dateStr}</td>
           <td>${item.quantidade}</td>
@@ -1136,7 +1139,8 @@
       
       let proximos7d = 0;
       calendarData.forEach(item => {
-        const itemDate = new Date(item.data + 'T00:00:00');
+        const itemDate = parseDateFromIso(item.data);
+        if (!itemDate) return;
         const diffDays = Math.floor((itemDate - today) / (1000 * 60 * 60 * 24));
         if (diffDays >= 0 && diffDays <= 7) {
           proximos7d += item.quantidade;

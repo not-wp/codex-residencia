@@ -142,12 +142,41 @@ function updateSheetRow(sheetName, rowIndex, rowData) {
 function clearSheetData(sheetName) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sheet) return;
-  
+
   const lastRow = sheet.getLastRow();
   if (lastRow > 1) {
     sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clear();
   }
   SpreadsheetApp.flush();
+}
+
+function parseIsoDateToLocal(dateInput) {
+  if (!dateInput && dateInput !== 0) {
+    return null;
+  }
+
+  if (dateInput instanceof Date && !isNaN(dateInput)) {
+    const copy = new Date(dateInput.getTime());
+    copy.setHours(0, 0, 0, 0);
+    return copy;
+  }
+
+  if (typeof dateInput === 'string') {
+    const normalized = dateInput.slice(0, 10);
+    const parts = normalized.split('-');
+    if (parts.length === 3) {
+      const year = Number(parts[0]);
+      const month = Number(parts[1]) - 1;
+      const day = Number(parts[2]);
+      if ([year, month, day].every(num => Number.isFinite(num))) {
+        const parsed = new Date(year, month, day);
+        parsed.setHours(0, 0, 0, 0);
+        return parsed;
+      }
+    }
+  }
+
+  return null;
 }
 
 // ============================================================================
@@ -1068,11 +1097,15 @@ function apiGetDayDetails(dateISO) {
     }
 
     const timezone = Session.getScriptTimeZone();
-    const targetDate = new Date(dateISO);
-    if (isNaN(targetDate)) {
-      return { ok: false, error: 'Data inválida' };
+    let targetDate = parseIsoDateToLocal(dateISO);
+    if (!targetDate) {
+      const fallback = new Date(dateISO);
+      if (!(fallback instanceof Date) || isNaN(fallback)) {
+        return { ok: false, error: 'Data inválida' };
+      }
+      fallback.setHours(0, 0, 0, 0);
+      targetDate = fallback;
     }
-    targetDate.setHours(0, 0, 0, 0);
     const targetKey = Utilities.formatDate(targetDate, timezone, 'yyyy-MM-dd');
 
     const spacedData = readSheetData(SHEET_NAMES.SPACED);
@@ -1122,8 +1155,8 @@ function apiGetDayDetails(dateISO) {
       logsMap[key].sort(function(a, b) {
         const safeA = a.data ? a.data : '1970-01-01';
         const safeB = b.data ? b.data : '1970-01-01';
-        const dateA = new Date(safeA + 'T00:00:00');
-        const dateB = new Date(safeB + 'T00:00:00');
+        const dateA = parseIsoDateToLocal(safeA) || new Date(safeA);
+        const dateB = parseIsoDateToLocal(safeB) || new Date(safeB);
         return dateB - dateA;
       });
     });
@@ -1134,12 +1167,13 @@ function apiGetDayDetails(dateISO) {
       if (!item || !item.proximaRevisao) return;
 
       let prox = item.proximaRevisao;
-      if (!(prox instanceof Date)) {
-        prox = new Date(prox);
+      let proxDate = parseIsoDateToLocal(prox);
+      if (!proxDate) {
+        proxDate = new Date(prox);
+        if (!(proxDate instanceof Date) || isNaN(proxDate)) return;
+        proxDate.setHours(0, 0, 0, 0);
       }
-      if (!(prox instanceof Date) || isNaN(prox)) return;
-      prox.setHours(0, 0, 0, 0);
-      const proxKey = Utilities.formatDate(prox, timezone, 'yyyy-MM-dd');
+      const proxKey = Utilities.formatDate(proxDate, timezone, 'yyyy-MM-dd');
       if (proxKey !== targetKey) return;
 
       const alvo = item.alvo || '';
