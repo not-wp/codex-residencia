@@ -121,11 +121,27 @@ function writeSheetRow(sheetName, rowData) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) throw new Error(`Sheet ${sheetName} não encontrada`);
-  
+
   const lastRow = sheet.getLastRow();
   const targetRow = lastRow + 1;
-  
-  sheet.getRange(targetRow, 1, 1, rowData.length).setValues([rowData]);
+
+  const sanitized = rowData.map(value => {
+    if (value instanceof Date && !isNaN(value)) {
+      const copy = new Date(value.getTime());
+      copy.setHours(0, 0, 0, 0);
+      return copy;
+    }
+    return value;
+  });
+
+  sheet.getRange(targetRow, 1, 1, sanitized.length).setValues([sanitized]);
+
+  sanitized.forEach((value, idx) => {
+    if (value instanceof Date && !isNaN(value)) {
+      sheet.getRange(targetRow, idx + 1).setNumberFormat('dd/mm/yyyy');
+    }
+  });
+
   SpreadsheetApp.flush();
 }
 
@@ -133,9 +149,25 @@ function updateSheetRow(sheetName, rowIndex, rowData) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) throw new Error(`Sheet ${sheetName} não encontrada`);
-  
+
+  const sanitized = rowData.map(value => {
+    if (value instanceof Date && !isNaN(value)) {
+      const copy = new Date(value.getTime());
+      copy.setHours(0, 0, 0, 0);
+      return copy;
+    }
+    return value;
+  });
+
   // rowIndex é baseado em 0, então +2 (1 para header, 1 para converter de 0-based)
-  sheet.getRange(rowIndex + 2, 1, 1, rowData.length).setValues([rowData]);
+  sheet.getRange(rowIndex + 2, 1, 1, sanitized.length).setValues([sanitized]);
+
+  sanitized.forEach((value, idx) => {
+    if (value instanceof Date && !isNaN(value)) {
+      sheet.getRange(rowIndex + 2, idx + 1).setNumberFormat('dd/mm/yyyy');
+    }
+  });
+
   SpreadsheetApp.flush();
 }
 
@@ -151,7 +183,7 @@ function clearSheetData(sheetName) {
 }
 
 function parseIsoDateToLocal(dateInput) {
-  if (!dateInput && dateInput !== 0) {
+  if (dateInput === null || dateInput === undefined || dateInput === '') {
     return null;
   }
 
@@ -161,22 +193,67 @@ function parseIsoDateToLocal(dateInput) {
     return copy;
   }
 
+  if (typeof dateInput === 'number' && isFinite(dateInput)) {
+    const fromNumber = new Date(dateInput);
+    if (!isNaN(fromNumber)) {
+      fromNumber.setHours(0, 0, 0, 0);
+      return fromNumber;
+    }
+  }
+
   if (typeof dateInput === 'string') {
-    const normalized = dateInput.slice(0, 10);
-    const parts = normalized.split('-');
-    if (parts.length === 3) {
-      const year = Number(parts[0]);
-      const month = Number(parts[1]) - 1;
-      const day = Number(parts[2]);
-      if ([year, month, day].every(num => Number.isFinite(num))) {
-        const parsed = new Date(year, month, day);
+    const trimmed = dateInput.trim();
+    if (!trimmed) return null;
+
+    // dd/mm/yyyy
+    const brMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (brMatch) {
+      const day = Number(brMatch[1]);
+      const month = Number(brMatch[2]) - 1;
+      const year = Number(brMatch[3]);
+      const parsed = new Date(year, month, day);
+      if (!isNaN(parsed)) {
         parsed.setHours(0, 0, 0, 0);
         return parsed;
       }
     }
+
+    // yyyy-MM-dd or yyyy-MM-ddTHH:MM:SS
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) {
+      const year = Number(isoMatch[1]);
+      const month = Number(isoMatch[2]) - 1;
+      const day = Number(isoMatch[3]);
+      const parsed = new Date(year, month, day);
+      if (!isNaN(parsed)) {
+        parsed.setHours(0, 0, 0, 0);
+        return parsed;
+      }
+    }
+
+    const fallback = new Date(trimmed);
+    if (!isNaN(fallback)) {
+      fallback.setHours(0, 0, 0, 0);
+      return fallback;
+    }
   }
 
   return null;
+}
+
+function parseSheetDate(value) {
+  const parsed = parseIsoDateToLocal(value);
+  if (parsed) return parsed;
+  return null;
+}
+
+function formatDateDDMMYYYY(date) {
+  const parsed = parseSheetDate(date);
+  if (!parsed) return '';
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const year = parsed.getFullYear();
+  return `${day}/${month}/${year}`;
 }
 
 // ============================================================================
@@ -293,11 +370,12 @@ function apiLogBlock(payload) {
       return { ok: false, error: 'Aba LOG não encontrada' };
     }
     
-    // Converter data
-    let dataObj = new Date();
-    if (payload.data) {
-      dataObj = new Date(payload.data);
+    // Converter data (dd/mm/yyyy)
+    let dataObj = parseSheetDate(payload.data);
+    if (!dataObj) {
+      dataObj = new Date();
     }
+    dataObj.setHours(0, 0, 0, 0);
     
     const uid = Utilities.getUuid();
     
@@ -317,10 +395,9 @@ function apiLogBlock(payload) {
     
     Logger.log('Dados a gravar: ' + JSON.stringify(rowData));
     
-    // Escrever diretamente
-    logSheet.appendRow(rowData);
-    SpreadsheetApp.flush();
-    
+    // Escrever diretamente com formatação de data
+    writeSheetRow(SHEET_NAMES.LOG, rowData);
+
     Logger.log('Bloco salvo com sucesso! UID: ' + uid);
     
     return { ok: true, uid: uid };
@@ -356,7 +433,7 @@ function testLogBlock() {
 // PROCESSAMENTO: ATUALIZAR STATS A PARTIR DO LOG
 // ============================================================================
 
-function apiProcessLog() {
+function apiProcessLogInternal() {
   try {
     const lock = LockService.getScriptLock();
     lock.tryLock(30000);
@@ -379,8 +456,10 @@ function apiProcessLog() {
       const subarea = row.subarea || 'Sem subárea';
       const alvo = `${area}::${subarea}`;
       
-      const dataBloco = new Date(row.data);
-      dataBloco.setHours(0, 0, 0, 0);
+      let dataBloco = parseSheetDate(row.data);
+      if (!dataBloco) {
+        dataBloco = new Date();
+      }
       const diasAtras = Math.floor((hoje - dataBloco) / (1000 * 60 * 60 * 24));
       
       if (!statsMap[alvo]) {
@@ -431,7 +510,7 @@ function apiProcessLog() {
       stat.dificuldades.push(dif);
       
       // Data mais recente
-      if (dataBloco > stat.ultimaData) {
+      if (dataBloco && dataBloco > stat.ultimaData) {
         stat.ultimaData = dataBloco;
       }
     });
@@ -496,7 +575,8 @@ function apiProcessLog() {
         S_inicial = Math.min(S_inicial, settings.Smax);
         
         // Primeira revisão: logo após estudar
-        const proximaRevisao = new Date(s.ultimaData);
+        const proximaRevisaoBase = parseSheetDate(s.ultimaData) || new Date();
+        const proximaRevisao = new Date(proximaRevisaoBase.getTime());
         proximaRevisao.setDate(proximaRevisao.getDate() + Math.round(S_inicial * 0.3));
         
         const newSpacedRow = [
@@ -573,193 +653,9 @@ function apiProcessAll() {
 }
 
 function apiProcessLog() {
-  try {
-    const lock = LockService.getScriptLock();
-    lock.tryLock(30000);
-    
-    const logData = readSheetData(SHEET_NAMES.LOG);
-    const settings = apiGetSettings();
-    
-    if (logData.length === 0) {
-      lock.releaseLock();
-      return { ok: true, message: 'Nenhum dado no LOG para processar' };
-    }
-    
-    // Agrupar por área::subárea
-    const statsMap = {};
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    
-    logData.forEach(row => {
-      const area = row.area || 'Sem área';
-      const subarea = row.subarea || 'Sem subárea';
-      const alvo = `${area}::${subarea}`;
-      
-      const dataBloco = new Date(row.data);
-      dataBloco.setHours(0, 0, 0, 0);
-      const diasAtras = Math.floor((hoje - dataBloco) / (1000 * 60 * 60 * 24));
-      
-      if (!statsMap[alvo]) {
-        statsMap[alvo] = {
-          area: area,
-          subarea: subarea,
-          total_blocos: 0,
-          questoes: 0,
-          acertos: 0,
-          questoes_28d: 0,
-          acertos_28d: 0,
-          questoes_7d: 0,
-          acertos_7d: 0,
-          tempos: [],
-          flags_28d: 0,
-          dificuldades: [],
-          ultimaData: dataBloco
-        };
-      }
-      
-      const stat = statsMap[alvo];
-      stat.total_blocos++;
-      
-      const total = parseInt(row.total) || 0;
-      const acertos = parseInt(row.acertos) || 0;
-      const tempo = parseFloat(row.tempoMedioSeg) || 0;
-      const dif = parseInt(row.difPercebida) || 3;
-      
-      // Totais gerais
-      stat.questoes += total;
-      stat.acertos += acertos;
-      
-      // Últimos 28 dias
-      if (diasAtras <= 28) {
-        stat.questoes_28d += total;
-        stat.acertos_28d += acertos;
-        if (row.flags) stat.flags_28d++;
-      }
-      
-      // Últimos 7 dias
-      if (diasAtras <= 7) {
-        stat.questoes_7d += total;
-        stat.acertos_7d += acertos;
-      }
-      
-      // Tempo e dificuldade
-      if (tempo > 0) stat.tempos.push(tempo);
-      stat.dificuldades.push(dif);
-      
-      // Data mais recente
-      if (dataBloco > stat.ultimaData) {
-        stat.ultimaData = dataBloco;
-      }
-    });
-    
-    // Atualizar aba STATS
-    clearSheetData(SHEET_NAMES.STATS);
-    const statsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.STATS);
-    
-    Object.keys(statsMap).forEach(alvo => {
-      const s = statsMap[alvo];
-      
-      const acerto_vida = s.questoes > 0 ? s.acertos / s.questoes : 0;
-      const acerto_28d = s.questoes_28d > 0 ? s.acertos_28d / s.questoes_28d : acerto_vida;
-      const acerto_7d = s.questoes_7d > 0 ? s.acertos_7d / s.questoes_7d : acerto_28d;
-      
-      const tempo_medio = s.tempos.length > 0 
-        ? s.tempos.reduce((a, b) => a + b, 0) / s.tempos.length 
-        : 60;
-      
-      const dif_media = s.dificuldades.length > 0
-        ? s.dificuldades.reduce((a, b) => a + b, 0) / s.dificuldades.length
-        : 3;
-      
-      const rowData = [
-        s.area,
-        s.subarea,
-        s.total_blocos,
-        s.questoes,
-        s.acertos,
-        acerto_vida,
-        acerto_28d,
-        acerto_7d,
-        tempo_medio,
-        s.flags_28d,
-        dif_media,
-        s.ultimaData
-      ];
-      
-      writeSheetRow(SHEET_NAMES.STATS, rowData);
-    });
-    
-    // Criar/atualizar alvos em SPACED
-    const spacedData = readSheetData(SHEET_NAMES.SPACED);
-    const spacedSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.SPACED);
-    
-    Object.keys(statsMap).forEach(alvo => {
-      const existeSpaced = spacedData.find(s => s.alvo === alvo);
-      
-      if (!existeSpaced) {
-        // Criar novo alvo em SPACED
-        const s = statsMap[alvo];
-        const acerto_28d = s.questoes_28d > 0 ? s.acertos_28d / s.questoes_28d : 0.5;
-        const dif_media = s.dificuldades.length > 0
-          ? s.dificuldades.reduce((a, b) => a + b, 0) / s.dificuldades.length
-          : 3;
-        
-        // Estabilidade inicial baseada na competência
-        let S_inicial = settings.Smin;
-        if (acerto_28d > 0.8) {
-          S_inicial = settings.Smin * 2;
-        } else if (acerto_28d > 0.6) {
-          S_inicial = settings.Smin * 1.5;
-        }
-        S_inicial = Math.min(S_inicial, settings.Smax);
-        
-        // Primeira revisão: logo após estudar
-        const proximaRevisao = new Date(s.ultimaData);
-        proximaRevisao.setDate(proximaRevisao.getDate() + Math.round(S_inicial * 0.3));
-        
-        const newSpacedRow = [
-          alvo,
-          s.ultimaData,
-          S_inicial,
-          dif_media,
-          proximaRevisao,
-          0, // lapses
-          0  // prioridade
-        ];
-        
-        writeSheetRow(SHEET_NAMES.SPACED, newSpacedRow);
-        
-        // Criar modelo inicial
-        const modelData = readSheetData(SHEET_NAMES.MODEL);
-        const existeModel = modelData.find(m => m.alvo === alvo);
-        
-        if (!existeModel) {
-          const newModelRow = [
-            alvo,
-            Math.log(S_inicial), // theta0
-            0, // theta1
-            0, // theta2
-            S_inicial, // S_atual
-            hoje
-          ];
-          writeSheetRow(SHEET_NAMES.MODEL, newModelRow);
-        }
-      }
-    });
-    
-    SpreadsheetApp.flush();
-    lock.releaseLock();
-    
-    return { 
-      ok: true, 
-      alvosProcessados: Object.keys(statsMap).length,
-      message: `${Object.keys(statsMap).length} alvos processados com sucesso`
-    };
-  } catch (e) {
-    Logger.log('Erro em apiProcessLog: ' + e.toString());
-    return { ok: false, error: e.toString() };
-  }
+  return apiProcessLogInternal();
 }
+
 
 // ============================================================================
 // API: PROCESSAR TUDO (LOG → STATS → SPACED → FILA)
@@ -901,15 +797,13 @@ function calculatePriorityForRow(spacedItem, statsRow, settings, referenceDate) 
 
   let ultimaRevisaoDias = 0;
   if (spacedItem.ultimaRevisao) {
-    const ultima = new Date(spacedItem.ultimaRevisao);
-    if (!isNaN(ultima)) {
-      ultima.setHours(0, 0, 0, 0);
+    const ultima = parseSheetDate(spacedItem.ultimaRevisao);
+    if (ultima) {
       ultimaRevisaoDias = Math.max(0, Math.floor((today - ultima) / msPerDay));
     }
   } else if (spacedItem.proximaRevisao) {
-    const prox = new Date(spacedItem.proximaRevisao);
-    if (!isNaN(prox)) {
-      prox.setHours(0, 0, 0, 0);
+    const prox = parseSheetDate(spacedItem.proximaRevisao);
+    if (prox) {
       ultimaRevisaoDias = Math.max(0, Math.floor((today - prox) / msPerDay));
     }
   }
@@ -941,9 +835,8 @@ function calculatePriorityForRow(spacedItem, statsRow, settings, referenceDate) 
 
   let atrasoDias = 0;
   if (spacedItem.proximaRevisao) {
-    const proxima = new Date(spacedItem.proximaRevisao);
-    if (!isNaN(proxima)) {
-      proxima.setHours(0, 0, 0, 0);
+    const proxima = parseSheetDate(spacedItem.proximaRevisao);
+    if (proxima) {
       atrasoDias = Math.max(0, Math.floor((today - proxima) / msPerDay));
     }
   }
@@ -1014,7 +907,7 @@ function apiMakeReviewToday() {
       const prioridade = calculatePriorityForRow(item, statsRow, settings, hoje) || 0;
       priorityValues.push([prioridade]);
 
-      const proxima = item.proximaRevisao ? new Date(item.proximaRevisao) : null;
+      const proxima = item.proximaRevisao ? parseSheetDate(item.proximaRevisao) : null;
       if (!proxima || isNaN(proxima)) {
         return;
       }
@@ -1024,7 +917,7 @@ function apiMakeReviewToday() {
         reviewList.push({
           alvo: item.alvo,
           prioridade: prioridade,
-          proximaRevisao: Utilities.formatDate(proxima, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+          proximaRevisao: proxima,
           estabilidade: parseFloat(item.estabilidade) || settings.Smin
         });
       }
@@ -1038,7 +931,7 @@ function apiMakeReviewToday() {
 
     clearSheetData(SHEET_NAMES.REVER_HOJE);
     reviewList.forEach(item => {
-      reviewSheet.appendRow([
+      writeSheetRow(SHEET_NAMES.REVER_HOJE, [
         item.alvo,
         item.prioridade,
         item.proximaRevisao,
@@ -1048,7 +941,14 @@ function apiMakeReviewToday() {
 
     SpreadsheetApp.flush();
 
-    return { ok: true, count: reviewList.length, data: reviewList };
+    const responseList = reviewList.map(item => ({
+      alvo: item.alvo,
+      prioridade: item.prioridade,
+      proximaRevisao: formatDateDDMMYYYY(item.proximaRevisao),
+      estabilidade: item.estabilidade
+    }));
+
+    return { ok: true, count: reviewList.length, data: responseList };
 
   } catch (e) {
     return { ok: false, error: e.toString() };
@@ -1075,11 +975,12 @@ function debugSpaced() {
       Logger.log('Estabilidade: ' + item.estabilidade);
       
       if (item.proximaRevisao) {
-        const proxRev = new Date(item.proximaRevisao);
-        proxRev.setHours(0, 0, 0, 0);
-        Logger.log('Próxima revisão (processada): ' + proxRev);
-        Logger.log('Hoje: ' + hoje);
-        Logger.log('Está vencido? ' + (proxRev <= hoje));
+        const proxRev = parseSheetDate(item.proximaRevisao);
+        if (proxRev) {
+          Logger.log('Próxima revisão (processada): ' + proxRev);
+          Logger.log('Hoje: ' + hoje);
+          Logger.log('Está vencido? ' + (proxRev <= hoje));
+        }
       }
     });
     
@@ -1106,7 +1007,7 @@ function apiGetDayDetails(dateISO) {
       fallback.setHours(0, 0, 0, 0);
       targetDate = fallback;
     }
-    const targetKey = Utilities.formatDate(targetDate, timezone, 'yyyy-MM-dd');
+    const targetKeyDisplay = formatDateDDMMYYYY(targetDate);
 
     const spacedData = readSheetData(SHEET_NAMES.SPACED);
     const statsData = readSheetData(SHEET_NAMES.STATS);
@@ -1129,10 +1030,9 @@ function apiGetDayDetails(dateISO) {
       const key = makeKey(entry.area, entry.subarea);
       const rawDate = entry.data;
       let dateKey = '';
-      if (rawDate instanceof Date && !isNaN(rawDate)) {
-        dateKey = Utilities.formatDate(rawDate, timezone, 'yyyy-MM-dd');
-      } else if (typeof rawDate === 'string' && rawDate) {
-        dateKey = rawDate.slice(0, 10);
+      const parsed = parseSheetDate(rawDate);
+      if (parsed) {
+        dateKey = formatDateDDMMYYYY(parsed);
       }
 
       if (!logsMap[key]) {
@@ -1153,10 +1053,8 @@ function apiGetDayDetails(dateISO) {
 
     Object.keys(logsMap).forEach(function(key) {
       logsMap[key].sort(function(a, b) {
-        const safeA = a.data ? a.data : '1970-01-01';
-        const safeB = b.data ? b.data : '1970-01-01';
-        const dateA = parseIsoDateToLocal(safeA) || new Date(safeA);
-        const dateB = parseIsoDateToLocal(safeB) || new Date(safeB);
+        const dateA = parseSheetDate(a.data) || new Date(0);
+        const dateB = parseSheetDate(b.data) || new Date(0);
         return dateB - dateA;
       });
     });
@@ -1167,14 +1065,11 @@ function apiGetDayDetails(dateISO) {
       if (!item || !item.proximaRevisao) return;
 
       let prox = item.proximaRevisao;
-      let proxDate = parseIsoDateToLocal(prox);
+      let proxDate = parseSheetDate(prox);
       if (!proxDate) {
-        proxDate = new Date(prox);
-        if (!(proxDate instanceof Date) || isNaN(proxDate)) return;
-        proxDate.setHours(0, 0, 0, 0);
+        return;
       }
-      const proxKey = Utilities.formatDate(proxDate, timezone, 'yyyy-MM-dd');
-      if (proxKey !== targetKey) return;
+      if (proxDate.getTime() !== targetDate.getTime()) return;
 
       const alvo = item.alvo || '';
       const partes = alvo.split('::');
@@ -1186,10 +1081,8 @@ function apiGetDayDetails(dateISO) {
       const history = logsMap[key] || [];
 
       let ultimaRevisao = '';
-      if (item.ultimaRevisao instanceof Date && !isNaN(item.ultimaRevisao)) {
-        ultimaRevisao = Utilities.formatDate(item.ultimaRevisao, timezone, 'yyyy-MM-dd');
-      } else if (typeof item.ultimaRevisao === 'string' && item.ultimaRevisao) {
-        ultimaRevisao = item.ultimaRevisao.slice(0, 10);
+      if (item.ultimaRevisao) {
+        ultimaRevisao = formatDateDDMMYYYY(item.ultimaRevisao);
       }
 
       const detalhe = {
@@ -1198,7 +1091,7 @@ function apiGetDayDetails(dateISO) {
         subarea: subarea,
         prioridade: item.prioridade !== undefined ? Number(item.prioridade) : null,
         estabilidade: item.estabilidade !== undefined ? Number(item.estabilidade) : null,
-        proximaRevisao: proxKey,
+        proximaRevisao: formatDateDDMMYYYY(proxDate),
         ultimaRevisao: ultimaRevisao,
         lapses: item.lapses !== undefined ? Number(item.lapses) : 0,
         history: history,
@@ -1220,7 +1113,24 @@ function apiGetDayDetails(dateISO) {
       return pB - pA;
     });
 
-    return { ok: true, date: targetKey, revisoes: details };
+    const formattedDetails = details.map(function(detail) {
+      const history = Array.isArray(detail.history)
+        ? detail.history.map(function(entry) {
+            const parsedDate = parseSheetDate(entry.data);
+            const formattedDate = formatDateDDMMYYYY(parsedDate || entry.data);
+            return {
+              data: formattedDate || (entry.data || ''),
+              total: entry.total,
+              acertos: entry.acertos,
+              acertoPct: entry.acertoPct
+            };
+          })
+        : [];
+
+      return Object.assign({}, detail, { history: history });
+    });
+
+    return { ok: true, date: targetKeyDisplay, revisoes: formattedDetails };
   } catch (e) {
     return { ok: false, error: e.toString() };
   }
@@ -1246,19 +1156,19 @@ function apiGetReviewCalendar(days) {
     hoje.setHours(0, 0, 0, 0);
     
     const calendar = {};
-    
+
     for (let i = 0; i < days; i++) {
       const date = new Date(hoje);
       date.setDate(date.getDate() + i);
-      const dateStr = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      const dateStr = formatDateDDMMYYYY(date);
       calendar[dateStr] = 0;
     }
-    
+
     spaced.forEach(item => {
-      const proxRevisao = new Date(item.proximaRevisao);
-      proxRevisao.setHours(0, 0, 0, 0);
-      const dateStr = Utilities.formatDate(proxRevisao, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      
+      const proxRevisao = parseSheetDate(item.proximaRevisao);
+      if (!proxRevisao) return;
+      const dateStr = formatDateDDMMYYYY(proxRevisao);
+
       if (calendar[dateStr] !== undefined) {
         calendar[dateStr]++;
       }
@@ -1354,9 +1264,8 @@ function apiLogReviewOutcome(payload) {
     let tDias = parseFloat(payload.tDias);
     if (!isFinite(tDias) || tDias <= 0) {
       if (spacedRow && spacedRow.ultimaRevisao) {
-        const ultima = new Date(spacedRow.ultimaRevisao);
-        if (!isNaN(ultima)) {
-          ultima.setHours(0, 0, 0, 0);
+        const ultima = parseSheetDate(spacedRow.ultimaRevisao);
+        if (ultima) {
           tDias = Math.max(1, Math.floor((hojeSemHora - ultima) / (1000 * 60 * 60 * 24)));
         }
       }
@@ -1466,8 +1375,8 @@ function apiLogReviewOutcome(payload) {
     if (acertouPredominante) {
       ultimaRevisaoValor = hojeSemHora;
     } else if (spacedRow && spacedRow.ultimaRevisao) {
-      const ultima = new Date(spacedRow.ultimaRevisao);
-      if (!isNaN(ultima)) {
+      const ultima = parseSheetDate(spacedRow.ultimaRevisao);
+      if (ultima) {
         ultimaRevisaoValor = ultima;
       }
     }
@@ -1559,7 +1468,11 @@ function apiRecompute() {
     const statsData = readSheetData(SHEET_NAMES.STATS);
     
     // Ordenar por data
-    revisaoLog.sort((a, b) => new Date(a.data) - new Date(b.data));
+    revisaoLog.sort((a, b) => {
+      const dateA = parseSheetDate(a.data) || new Date(0);
+      const dateB = parseSheetDate(b.data) || new Date(0);
+      return dateA - dateB;
+    });
     
     // Mapa de modelos
     const models = {};
@@ -1641,13 +1554,13 @@ function apiRecompute() {
         let I = calcOptimalInterval(S_novo, settings.retentionTarget);
         I = applyCapI(I, settings.Imin, settings.Imax);
         
-        const ultimaRevisao = item.ultimaRevisao ? new Date(item.ultimaRevisao) : new Date();
-        const proximaRevisao = new Date(ultimaRevisao);
+        const ultimaRevisao = parseSheetDate(item.ultimaRevisao) || new Date();
+        const proximaRevisao = new Date(ultimaRevisao.getTime());
         proximaRevisao.setDate(proximaRevisao.getDate() + Math.round(I));
-        
+
         const updatedRow = [
           alvo,
-          item.ultimaRevisao,
+          ultimaRevisao,
           S_novo,
           item.dificuldade_media,
           proximaRevisao,

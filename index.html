@@ -372,6 +372,109 @@
       background: var(--bg-tertiary);
     }
 
+    .queue-row {
+      position: relative;
+      transition: background 0.3s ease, transform 0.3s ease;
+      cursor: pointer;
+    }
+
+    .queue-row.completed {
+      background: rgba(34, 197, 94, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+    }
+
+    .queue-row.completed td {
+      color: var(--success);
+    }
+
+    .btn-check {
+      background: rgba(148, 163, 184, 0.15);
+      color: var(--text-secondary);
+      border: none;
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-check:hover {
+      background: rgba(148, 163, 184, 0.25);
+      color: var(--text-primary);
+      transform: translateY(-1px);
+    }
+
+    .btn-check:disabled {
+      cursor: default;
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--success);
+    }
+
+    .fila-status {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .queue-row .victory-check {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: rgba(34, 197, 94, 0.18);
+      color: var(--success);
+      font-weight: 700;
+      margin-left: 6px;
+      opacity: 0;
+      transform: scale(0.4);
+    }
+
+    .queue-row.completed .victory-check {
+      opacity: 1;
+      transform: scale(1);
+      animation: victoryPop 0.6s ease forwards;
+    }
+
+    .queue-row.completed::after,
+    .queue-row.completed::before {
+      content: '';
+      position: absolute;
+      pointer-events: none;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      opacity: 0;
+      animation: sparkle 0.9s ease forwards;
+    }
+
+    .queue-row.completed::after {
+      top: 12%;
+      left: 18%;
+    }
+
+    .queue-row.completed::before {
+      bottom: 16%;
+      right: 12%;
+    }
+
+    @keyframes victoryPop {
+      0% { transform: scale(0.3) rotate(-20deg); opacity: 0; }
+      55% { transform: scale(1.25) rotate(12deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+
+    @keyframes sparkle {
+      0% { transform: scale(0.4); opacity: 0; }
+      45% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(0.6); opacity: 0; }
+    }
+
     /* KPIs */
     .kpi-grid {
       display: grid;
@@ -617,7 +720,7 @@
         <form id="formBloco" onsubmit="return false;">
           <div class="form-group">
             <label>Data</label>
-            <input type="date" id="blocoData" required>
+            <input type="text" id="blocoData" placeholder="dd/mm/aaaa" inputmode="numeric" pattern="\d{2}/\d{2}/\d{4}" required>
           </div>
           <div class="form-group">
             <label>Área</label>
@@ -676,10 +779,11 @@
                 <th>Prioridade</th>
                 <th>Próxima Revisão</th>
                 <th>Estabilidade (dias)</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody id="filaBody">
-              <tr><td colspan="4" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
+              <tr><td colspan="5" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
             </tbody>
           </table>
         </div>
@@ -690,16 +794,16 @@
         <form id="formRevisao" onsubmit="return false;">
           <div class="form-group">
             <label>Alvo (Área::Subárea)</label>
-            <input type="text" id="revisaoAlvo" placeholder="Ex: Clínica Médica::Cardiologia">
+            <input type="text" id="revisaoAlvo" placeholder="Ex: Clínica Médica::Cardiologia" list="alvoSuggestions">
             <small style="color: var(--text-secondary); font-size: 0.75rem;">Preencha o alvo completo ou informe área e subárea abaixo.</small>
           </div>
           <div class="form-group">
             <label>Área</label>
-            <input type="text" id="revisaoArea" placeholder="Ex: Clínica Médica">
+            <input type="text" id="revisaoArea" placeholder="Ex: Clínica Médica" list="areaSuggestions">
           </div>
           <div class="form-group">
             <label>Subárea</label>
-            <input type="text" id="revisaoSubarea" placeholder="Ex: Cardiologia">
+            <input type="text" id="revisaoSubarea" placeholder="Ex: Cardiologia" list="subareaSuggestions">
           </div>
           <div class="form-group">
             <label>Dias desde a última revisão</label>
@@ -733,6 +837,9 @@
           </div>
           <button type="button" class="btn btn-success" onclick="salvarRevisao()">Salvar revisão</button>
         </form>
+        <datalist id="alvoSuggestions"></datalist>
+        <datalist id="areaSuggestions"></datalist>
+        <datalist id="subareaSuggestions"></datalist>
       </div>
     </div>
 
@@ -881,6 +988,14 @@
     let reviewQueue = [];
     let calendarCache = [];
 
+    const alvoSuggestionSet = new Set();
+    const areaSuggestionSet = new Set();
+    const subareaSuggestionSet = new Set();
+
+    const alvoDatalist = document.getElementById('alvoSuggestions');
+    const areaDatalist = document.getElementById('areaSuggestions');
+    const subareaDatalist = document.getElementById('subareaSuggestions');
+
     const drawerOverlayEl = document.getElementById('drawerOverlay');
     const dayDetailsDrawerEl = document.getElementById('dayDetailsDrawer');
     const dayDetailsTitleEl = document.getElementById('dayDetailsTitle');
@@ -930,6 +1045,73 @@
       if (pageId !== 'dashboard') closeDayDetails();
     }
 
+    function refreshAutocompleteLists() {
+      const fillList = (datalist, sourceSet) => {
+        if (!datalist || !sourceSet) return;
+        const fragment = document.createDocumentFragment();
+        Array.from(sourceSet).sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(value => {
+          if (!value) return;
+          const option = document.createElement('option');
+          option.value = value;
+          fragment.appendChild(option);
+        });
+        datalist.innerHTML = '';
+        datalist.appendChild(fragment);
+      };
+
+      fillList(alvoDatalist, alvoSuggestionSet);
+      fillList(areaDatalist, areaSuggestionSet);
+      fillList(subareaDatalist, subareaSuggestionSet);
+    }
+
+    function addSuggestionsFromStats(stats) {
+      if (!Array.isArray(stats)) return;
+      let updated = false;
+      stats.forEach(row => {
+        const area = (row.area || '').trim();
+        const subarea = (row.subarea || '').trim();
+        if (area) {
+          if (!areaSuggestionSet.has(area)) updated = true;
+          areaSuggestionSet.add(area);
+        }
+        if (subarea) {
+          if (!subareaSuggestionSet.has(subarea)) updated = true;
+          subareaSuggestionSet.add(subarea);
+        }
+        if (area && subarea) {
+          const alvo = `${area}::${subarea}`;
+          if (!alvoSuggestionSet.has(alvo)) updated = true;
+          alvoSuggestionSet.add(alvo);
+        }
+      });
+      if (updated) refreshAutocompleteLists();
+    }
+
+    function addSuggestionsFromQueue(queue) {
+      if (!Array.isArray(queue)) return;
+      let updated = false;
+      queue.forEach(item => {
+        const alvo = (item.alvo || '').trim();
+        if (!alvo) return;
+        if (!alvoSuggestionSet.has(alvo)) {
+          alvoSuggestionSet.add(alvo);
+          updated = true;
+        }
+        if (alvo.includes('::')) {
+          const [area, subarea] = alvo.split('::').map(part => part.trim());
+          if (area && !areaSuggestionSet.has(area)) {
+            areaSuggestionSet.add(area);
+            updated = true;
+          }
+          if (subarea && !subareaSuggestionSet.has(subarea)) {
+            subareaSuggestionSet.add(subarea);
+            updated = true;
+          }
+        }
+      });
+      if (updated) refreshAutocompleteLists();
+    }
+
     // ========================================================================
     // DASHBOARD: PAINEL LATERAL DE DETALHES
     // ========================================================================
@@ -947,32 +1129,56 @@
       dayDetailsDrawerEl.setAttribute('aria-hidden', 'true');
     }
 
-    function parseDateFromIso(dateISO) {
-      if (!dateISO && dateISO !== 0) return null;
+    function parseAppDate(value) {
+      if (value === null || value === undefined || value === '') return null;
 
-      if (dateISO instanceof Date && !isNaN(dateISO)) {
-        const copy = new Date(dateISO.getTime());
+      if (value instanceof Date && !isNaN(value)) {
+        const copy = new Date(value.getTime());
         copy.setHours(0, 0, 0, 0);
         return copy;
       }
 
-      const normalized = String(dateISO).slice(0, 10);
-      const parts = normalized.split('-');
-      if (parts.length !== 3) return null;
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
 
-      const year = Number(parts[0]);
-      const month = Number(parts[1]) - 1;
-      const day = Number(parts[2]);
-      if ([year, month, day].some(num => !Number.isFinite(num))) return null;
+        const brMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (brMatch) {
+          const day = Number(brMatch[1]);
+          const month = Number(brMatch[2]) - 1;
+          const year = Number(brMatch[3]);
+          const parsed = new Date(year, month, day);
+          if (!isNaN(parsed)) {
+            parsed.setHours(0, 0, 0, 0);
+            return parsed;
+          }
+        }
 
-      const parsed = new Date(year, month, day);
-      parsed.setHours(0, 0, 0, 0);
-      return parsed;
+        const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (isoMatch) {
+          const year = Number(isoMatch[1]);
+          const month = Number(isoMatch[2]) - 1;
+          const day = Number(isoMatch[3]);
+          const parsed = new Date(year, month, day);
+          if (!isNaN(parsed)) {
+            parsed.setHours(0, 0, 0, 0);
+            return parsed;
+          }
+        }
+
+        const fallback = new Date(trimmed);
+        if (!isNaN(fallback)) {
+          fallback.setHours(0, 0, 0, 0);
+          return fallback;
+        }
+      }
+
+      return null;
     }
 
-    function formatDateLabel(dateISO) {
-      const dateObj = parseDateFromIso(dateISO);
-      if (!dateObj) return dateISO || '';
+    function formatDateLabel(dateValue) {
+      const dateObj = parseAppDate(dateValue);
+      if (!dateObj) return dateValue || '';
       return dateObj.toLocaleDateString('pt-BR', {
         weekday: 'long',
         year: 'numeric',
@@ -981,13 +1187,35 @@
       });
     }
 
-    function formatShortDate(dateISO) {
-      const dateObj = parseDateFromIso(dateISO);
-      if (!dateObj) return dateISO || '';
+    function formatShortDate(dateValue) {
+      const dateObj = parseAppDate(dateValue);
+      if (!dateObj) return dateValue || '';
       return dateObj.toLocaleDateString('pt-BR', {
         day: '2-digit',
         month: 'short'
       });
+    }
+
+    function formatDateInput(dateValue) {
+      const dateObj = parseAppDate(dateValue) || new Date();
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const year = dateObj.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+
+    function isValidDateInput(value) {
+      if (typeof value !== 'string') return false;
+      const match = value.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (!match) return false;
+      const day = Number(match[1]);
+      const month = Number(match[2]) - 1;
+      const year = Number(match[3]);
+      const date = new Date(year, month, day);
+      return !isNaN(date) &&
+        date.getDate() === day &&
+        date.getMonth() === month &&
+        date.getFullYear() === year;
     }
 
     // ========================================================================
@@ -1021,7 +1249,7 @@
     }
 
     function setDefaultDate() {
-      const today = new Date().toISOString().split('T')[0];
+      const today = formatDateInput(new Date());
       document.getElementById('blocoData').value = today;
     }
 
@@ -1038,11 +1266,22 @@
       google.script.run
         .withSuccessHandler(function(settings) {
           currentSettings = settings;
-          document.getElementById('kpiMetaAtual').textContent = 
+          document.getElementById('kpiMetaAtual').textContent =
             (settings.retentionTarget * 100).toFixed(0) + '%';
         })
         .withFailureHandler(handleError)
         .apiGetSettings();
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result && result.ok) {
+            addSuggestionsFromStats(result.data || []);
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.warn('Não foi possível carregar sugestões de alvos:', error);
+        })
+        .apiGetStats();
 
       // Load chart
       google.script.run
@@ -1121,7 +1360,7 @@
 
       data.forEach(item => {
         const row = document.createElement('tr');
-        const dateObj = parseDateFromIso(item.data);
+        const dateObj = parseAppDate(item.data);
         const dateStr = dateObj ? dateObj.toLocaleDateString('pt-BR') : (item.data || '—');
 
         row.innerHTML = `
@@ -1139,7 +1378,7 @@
       
       let proximos7d = 0;
       calendarData.forEach(item => {
-        const itemDate = parseDateFromIso(item.data);
+        const itemDate = parseAppDate(item.data);
         if (!itemDate) return;
         const diffDays = Math.floor((itemDate - today) / (1000 * 60 * 60 * 24));
         if (diffDays >= 0 && diffDays <= 7) {
@@ -1277,8 +1516,14 @@
     // LANÇAR BLOCO
     // ========================================================================
     function salvarBloco() {
+      const dataValor = document.getElementById('blocoData').value.trim();
+      if (!isValidDateInput(dataValor)) {
+        toast('Informe uma data válida no formato dd/mm/aaaa.', 'warning');
+        return;
+      }
+
       const payload = {
-        data: document.getElementById('blocoData').value,
+        data: dataValor,
         area: document.getElementById('blocoArea').value.trim(),
         subarea: document.getElementById('blocoSubarea').value.trim(),
         total: parseInt(document.getElementById('blocoTotal').value),
@@ -1373,6 +1618,7 @@
           if (result && result.ok) {
             reviewQueue = result.data || [];
             renderFilaRevisoes(reviewQueue);
+            addSuggestionsFromQueue(reviewQueue);
             if (typeof result.count === 'number') {
               document.getElementById('kpiRevisoesHoje').textContent = result.count;
             }
@@ -1397,7 +1643,7 @@
           setLoading(false);
           toast('Tempo esgotado ao gerar fila. Tente novamente.', 'warning');
           document.getElementById('filaBody').innerHTML =
-            '<tr><td colspan="4" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
+            '<tr><td colspan="5" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
         }, 15000);
       }
 
@@ -1409,6 +1655,7 @@
           if (result && result.ok) {
             reviewQueue = result.data || [];
             renderFilaRevisoes(reviewQueue);
+            addSuggestionsFromQueue(reviewQueue);
 
             const count = result.count || 0;
             document.getElementById('kpiRevisoesHoje').textContent = count;
@@ -1423,7 +1670,7 @@
           } else if (!silent) {
             toast('Erro: ' + (result ? result.error : 'Sem resposta'), 'error');
             document.getElementById('filaBody').innerHTML =
-              '<tr><td colspan="4" class="empty-state">Erro ao gerar fila.</td></tr>';
+              '<tr><td colspan="5" class="empty-state">Erro ao gerar fila.</td></tr>';
           }
         })
         .withFailureHandler(function(error) {
@@ -1431,8 +1678,8 @@
           if (!silent) {
             setLoading(false);
             toast('Erro: ' + error.message, 'error');
-            document.getElementById('filaBody').innerHTML =
-              '<tr><td colspan="4" class="empty-state">Erro de conexão.</td></tr>';
+          document.getElementById('filaBody').innerHTML =
+            '<tr><td colspan="5" class="empty-state">Erro de conexão.</td></tr>';
           } else {
             console.warn('Erro ao gerar fila:', error);
           }
@@ -1445,21 +1692,37 @@
       tbody.innerHTML = '';
 
       if (queue.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Nenhuma revisão pendente hoje</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma revisão pendente hoje</td></tr>';
         return;
       }
 
       queue.forEach(item => {
         const row = document.createElement('tr');
-        const proxRevisao = new Date(item.proximaRevisao);
-        const dateStr = proxRevisao.toLocaleDateString('pt-BR');
+        row.classList.add('queue-row');
+
+        const dateStr = formatShortDate(item.proximaRevisao) || item.proximaRevisao || '—';
 
         row.innerHTML = `
           <td>${item.alvo}</td>
           <td>${(Number(item.prioridade) || 0).toFixed(3)}</td>
           <td>${dateStr}</td>
           <td>${(Number(item.estabilidade) || 0).toFixed(1)}</td>
+          <td class="fila-status">
+            <button type="button" class="btn-check">✅ Marcar</button>
+            <span class="victory-check">✓</span>
+          </td>
         `;
+
+        const statusCell = row.querySelector('.fila-status');
+        const checkBtn = statusCell ? statusCell.querySelector('button') : null;
+        const victory = statusCell ? statusCell.querySelector('.victory-check') : null;
+
+        if (checkBtn) {
+          checkBtn.addEventListener('click', function(event) {
+            event.stopPropagation();
+            marcarItemEstudado(row, checkBtn, victory, item);
+          });
+        }
 
         row.addEventListener('click', function() {
           document.getElementById('revisaoAlvo').value = item.alvo;
@@ -1472,6 +1735,24 @@
 
         tbody.appendChild(row);
       });
+    }
+
+    function marcarItemEstudado(row, button, badge, item) {
+      if (!row || row.classList.contains('completed')) {
+        return;
+      }
+
+      row.classList.add('completed');
+      if (button) {
+        button.disabled = true;
+        button.textContent = '✅ Concluído';
+      }
+
+      if (badge) {
+        badge.style.opacity = '1';
+      }
+
+      toast(`✓ ${item.alvo} marcado como estudado!`, 'success');
     }
 
 
@@ -1538,6 +1819,7 @@
         .withSuccessHandler(function(result) {
           if (result.ok) {
             toast('Revisão registrada!', 'success');
+            addSuggestionsFromQueue([{ alvo: alvoFinal }]);
             limparFormRevisao();
             gerarFilaHoje({ silent: true });
             if (document.getElementById('dashboard').classList.contains('active')) {
