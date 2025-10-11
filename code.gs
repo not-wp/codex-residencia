@@ -1063,8 +1063,130 @@ function debugSpaced() {
 
 function apiGetDayDetails(dateISO) {
   try {
-    const reviewToday = readSheetData(SHEET_NAMES.REVER_HOJE);
-    return { ok: true, data: reviewToday };
+    if (!dateISO) {
+      return { ok: false, error: 'Data inválida' };
+    }
+
+    const timezone = Session.getScriptTimeZone();
+    const targetDate = new Date(dateISO);
+    if (isNaN(targetDate)) {
+      return { ok: false, error: 'Data inválida' };
+    }
+    targetDate.setHours(0, 0, 0, 0);
+    const targetKey = Utilities.formatDate(targetDate, timezone, 'yyyy-MM-dd');
+
+    const spacedData = readSheetData(SHEET_NAMES.SPACED);
+    const statsData = readSheetData(SHEET_NAMES.STATS);
+    const logData = readSheetData(SHEET_NAMES.LOG);
+
+    const makeKey = function(area, subarea) {
+      const safeArea = area ? area.toString().trim() : '';
+      const safeSub = subarea ? subarea.toString().trim() : '';
+      return `${safeArea}::${safeSub}`;
+    };
+
+    const statsMap = {};
+    statsData.forEach(function(row) {
+      const key = makeKey(row.area, row.subarea);
+      statsMap[key] = row;
+    });
+
+    const logsMap = {};
+    logData.forEach(function(entry) {
+      const key = makeKey(entry.area, entry.subarea);
+      const rawDate = entry.data;
+      let dateKey = '';
+      if (rawDate instanceof Date && !isNaN(rawDate)) {
+        dateKey = Utilities.formatDate(rawDate, timezone, 'yyyy-MM-dd');
+      } else if (typeof rawDate === 'string' && rawDate) {
+        dateKey = rawDate.slice(0, 10);
+      }
+
+      if (!logsMap[key]) {
+        logsMap[key] = [];
+      }
+
+      const total = Number(entry.total) || 0;
+      const acertos = Number(entry.acertos) || 0;
+      const pct = total > 0 ? (acertos / total) * 100 : null;
+
+      logsMap[key].push({
+        data: dateKey,
+        total: total,
+        acertos: acertos,
+        acertoPct: pct
+      });
+    });
+
+    Object.keys(logsMap).forEach(function(key) {
+      logsMap[key].sort(function(a, b) {
+        const safeA = a.data ? a.data : '1970-01-01';
+        const safeB = b.data ? b.data : '1970-01-01';
+        const dateA = new Date(safeA + 'T00:00:00');
+        const dateB = new Date(safeB + 'T00:00:00');
+        return dateB - dateA;
+      });
+    });
+
+    const details = [];
+
+    spacedData.forEach(function(item) {
+      if (!item || !item.proximaRevisao) return;
+
+      let prox = item.proximaRevisao;
+      if (!(prox instanceof Date)) {
+        prox = new Date(prox);
+      }
+      if (!(prox instanceof Date) || isNaN(prox)) return;
+      prox.setHours(0, 0, 0, 0);
+      const proxKey = Utilities.formatDate(prox, timezone, 'yyyy-MM-dd');
+      if (proxKey !== targetKey) return;
+
+      const alvo = item.alvo || '';
+      const partes = alvo.split('::');
+      const area = (item.area || partes[0] || '').toString().trim();
+      const subarea = (item.subarea || partes[1] || '').toString().trim();
+      const key = makeKey(area, subarea);
+
+      const statsRow = statsMap[key] || null;
+      const history = logsMap[key] || [];
+
+      let ultimaRevisao = '';
+      if (item.ultimaRevisao instanceof Date && !isNaN(item.ultimaRevisao)) {
+        ultimaRevisao = Utilities.formatDate(item.ultimaRevisao, timezone, 'yyyy-MM-dd');
+      } else if (typeof item.ultimaRevisao === 'string' && item.ultimaRevisao) {
+        ultimaRevisao = item.ultimaRevisao.slice(0, 10);
+      }
+
+      const detalhe = {
+        alvo: alvo,
+        area: area,
+        subarea: subarea,
+        prioridade: item.prioridade !== undefined ? Number(item.prioridade) : null,
+        estabilidade: item.estabilidade !== undefined ? Number(item.estabilidade) : null,
+        proximaRevisao: proxKey,
+        ultimaRevisao: ultimaRevisao,
+        lapses: item.lapses !== undefined ? Number(item.lapses) : 0,
+        history: history,
+        stats: statsRow
+          ? {
+              acerto_28d: statsRow.acerto_28d !== undefined ? Number(statsRow.acerto_28d) : null,
+              acerto_vida: statsRow.acerto_vida !== undefined ? Number(statsRow.acerto_vida) : null,
+              total_blocos: statsRow.total_blocos !== undefined ? Number(statsRow.total_blocos) : null
+            }
+          : null
+      };
+
+      details.push(detalhe);
+    });
+
+    details.sort(function(a, b) {
+      const pA = isNaN(a.prioridade) ? -Infinity : a.prioridade;
+      const pB = isNaN(b.prioridade) ? -Infinity : b.prioridade;
+      return pB - pA;
+    });
+
+    return { ok: true, date: targetKey, revisoes: details };
   } catch (e) {
     return { ok: false, error: e.toString() };
   }

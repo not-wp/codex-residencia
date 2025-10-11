@@ -114,6 +114,12 @@
       color: var(--text-primary);
     }
 
+    .helper-text {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+    }
+
     /* Forms */
     .form-group {
       margin-bottom: 16px;
@@ -188,6 +194,159 @@
       padding: 6px 12px;
       font-size: 0.85rem;
     }
+
+    .drawer-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.6);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 998;
+    }
+
+    .drawer-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: -420px;
+      width: 380px;
+      max-width: 90%;
+      height: 100%;
+      background: var(--bg-secondary);
+      box-shadow: -8px 0 24px rgba(15, 23, 42, 0.6);
+      transition: right 0.3s ease;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--border);
+    }
+
+    .drawer.open {
+      right: 0;
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+    }
+
+    .drawer-header h3 {
+      margin-bottom: 4px;
+      font-size: 1.2rem;
+      color: var(--accent);
+    }
+
+    .drawer-subtitle {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .drawer-content {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .drawer-item {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 16px;
+      border: 1px solid transparent;
+      transition: border 0.2s ease, transform 0.2s ease;
+    }
+
+    .drawer-item:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .drawer-item h4 {
+      margin-bottom: 8px;
+      font-size: 1rem;
+    }
+
+    .drawer-section-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+
+    .drawer-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .chip {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent);
+      border-radius: 20px;
+      padding: 4px 10px;
+      font-size: 0.75rem;
+    }
+
+    .chip.neutral {
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--text-secondary);
+    }
+
+    .history-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .history-list li {
+      background: rgba(15, 23, 42, 0.4);
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+    }
+
+    .history-badge {
+      font-weight: 600;
+    }
+
+    .btn-icon {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 1.2rem;
+      line-height: 1;
+      padding: 4px;
+      border-radius: 6px;
+      transition: background 0.2s ease, color 0.2s ease;
+    }
+
+    .btn-icon:hover {
+      background: rgba(148, 163, 184, 0.12);
+      color: var(--text-primary);
+    }
+
 
     /* Tables */
     table {
@@ -495,11 +654,8 @@
             <textarea id="blocoObs" placeholder="Anotações sobre o bloco..."></textarea>
           </div>
           <button type="button" class="btn btn-primary" onclick="salvarBloco()">Salvar Bloco</button>
-          <button type="button" class="btn btn-secondary" onclick="processarDados()" style="margin-top: 10px;">
-          🔄 Processar Dados (atualizar estatísticas)
-          </button>
-          <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 8px;">
-            Clique após lançar blocos para calcular revisões
+          <p class="helper-text" style="margin-top: 12px;">
+            As estatísticas e a fila serão atualizadas automaticamente após salvar o bloco.
           </p>
         </form>
       </div>
@@ -698,13 +854,24 @@
 
       <div class="card">
         <h2>Diagnóstico</h2>
-        <button class="btn btn-primary" onclick="processarDados()">🔄 Processar Dados</button>
+        <p class="helper-text">As estatísticas são recalculadas sempre que você salva um bloco ou registra uma revisão.</p>
         <button class="btn btn-secondary" onclick="mostrarDiagnostico()">📊 Info da Planilha</button>
         <div id="diagnosticoInfo" style="margin-top: 12px; color: var(--text-secondary); font-size: 0.9rem;"></div>
-        
+
       </div>
     </div>
   </div>
+  <div id="drawerOverlay" class="drawer-overlay"></div>
+  <aside id="dayDetailsDrawer" class="drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div>
+        <h3 id="dayDetailsTitle">Revisões do dia</h3>
+        <p id="dayDetailsSubtitle" class="drawer-subtitle"></p>
+      </div>
+      <button class="btn-icon" onclick="closeDayDetails()" aria-label="Fechar painel">✕</button>
+    </div>
+    <div id="dayDetailsContent" class="drawer-content"></div>
+  </aside>
 
   <script>
     // ========================================================================
@@ -712,6 +879,23 @@
     // ========================================================================
     let currentSettings = {};
     let reviewQueue = [];
+    let calendarCache = [];
+
+    const drawerOverlayEl = document.getElementById('drawerOverlay');
+    const dayDetailsDrawerEl = document.getElementById('dayDetailsDrawer');
+    const dayDetailsTitleEl = document.getElementById('dayDetailsTitle');
+    const dayDetailsSubtitleEl = document.getElementById('dayDetailsSubtitle');
+    const dayDetailsContentEl = document.getElementById('dayDetailsContent');
+
+    if (drawerOverlayEl) {
+      drawerOverlayEl.addEventListener('click', closeDayDetails);
+    }
+
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape') {
+        closeDayDetails();
+      }
+    });
 
     // ========================================================================
     // UI UTILITIES
@@ -735,7 +919,7 @@
     function switchPage(pageId) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      
+
       document.getElementById(pageId).classList.add('active');
       event.target.classList.add('active');
 
@@ -743,6 +927,64 @@
       if (pageId === 'ajustes') loadAjustes();
       // REMOVER O AUTO-LOAD DE REVISÕES
       // if (pageId === 'revisoes') gerarFilaHoje();
+      if (pageId !== 'dashboard') closeDayDetails();
+    }
+
+    // ========================================================================
+    // DASHBOARD: PAINEL LATERAL DE DETALHES
+    // ========================================================================
+    function openDayDetails() {
+      if (!drawerOverlayEl || !dayDetailsDrawerEl) return;
+      drawerOverlayEl.classList.add('active');
+      dayDetailsDrawerEl.classList.add('open');
+      dayDetailsDrawerEl.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeDayDetails() {
+      if (!drawerOverlayEl || !dayDetailsDrawerEl) return;
+      drawerOverlayEl.classList.remove('active');
+      dayDetailsDrawerEl.classList.remove('open');
+      dayDetailsDrawerEl.setAttribute('aria-hidden', 'true');
+    }
+
+    function parseDateFromIso(dateISO) {
+      if (!dateISO) return null;
+      let parsed = new Date(dateISO);
+      if (!isNaN(parsed)) {
+        parsed.setHours(0, 0, 0, 0);
+        return parsed;
+      }
+
+      const parts = dateISO.split('-');
+      if (parts.length !== 3) return null;
+      const day = parts[2].slice(0, 2);
+      const normalized = `${parts[0]}-${parts[1]}-${day}`;
+      parsed = new Date(normalized + 'T00:00:00');
+      if (!isNaN(parsed)) {
+        parsed.setHours(0, 0, 0, 0);
+        return parsed;
+      }
+      return null;
+    }
+
+    function formatDateLabel(dateISO) {
+      const dateObj = parseDateFromIso(dateISO);
+      if (!dateObj) return dateISO || '';
+      return dateObj.toLocaleDateString('pt-BR', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    }
+
+    function formatShortDate(dateISO) {
+      const dateObj = parseDateFromIso(dateISO);
+      if (!dateObj) return dateISO || '';
+      return dateObj.toLocaleDateString('pt-BR', {
+        day: '2-digit',
+        month: 'short'
+      });
     }
 
     // ========================================================================
@@ -865,6 +1107,7 @@
     }
 
     function renderCalendar(data) {
+      calendarCache = Array.isArray(data) ? data.slice() : [];
       const tbody = document.getElementById('calendarBody');
       tbody.innerHTML = '';
 
@@ -904,7 +1147,126 @@
     }
 
     function verDetalhesData(dateISO) {
-      alert(`Detalhes para ${dateISO} serão mostrados aqui.\nImplementação: carregar alvos específicos do dia.`);
+      if (!dayDetailsContentEl) return;
+      const readable = formatDateLabel(dateISO);
+      if (dayDetailsTitleEl) {
+        dayDetailsTitleEl.textContent = readable ? `Revisões de ${readable}` : 'Revisões do dia';
+      }
+      if (dayDetailsSubtitleEl) {
+        dayDetailsSubtitleEl.textContent = 'Carregando detalhes...';
+      }
+      dayDetailsContentEl.innerHTML = '<div class="empty-state"><p>Carregando...</p></div>';
+      openDayDetails();
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result && result.ok) {
+            renderDayDetails(dateISO, result.revisoes || []);
+          } else {
+            if (dayDetailsSubtitleEl) dayDetailsSubtitleEl.textContent = '';
+            dayDetailsContentEl.innerHTML = `<div class="empty-state"><p>${(result && result.error) || 'Não foi possível carregar os detalhes.'}</p></div>`;
+          }
+        })
+        .withFailureHandler(function(error) {
+          if (dayDetailsSubtitleEl) dayDetailsSubtitleEl.textContent = '';
+          dayDetailsContentEl.innerHTML = `<div class="empty-state"><p>${error.message}</p></div>`;
+          toast('Erro ao carregar detalhes: ' + error.message, 'error');
+        })
+        .apiGetDayDetails(dateISO);
+    }
+
+    function renderDayDetails(dateISO, revisoes) {
+      if (!dayDetailsContentEl) return;
+      const readable = formatDateLabel(dateISO);
+      if (dayDetailsTitleEl) {
+        dayDetailsTitleEl.textContent = readable ? `Revisões de ${readable}` : 'Revisões do dia';
+      }
+
+      if (dayDetailsSubtitleEl) {
+        if (!revisoes || revisoes.length === 0) {
+          dayDetailsSubtitleEl.textContent = 'Nenhuma revisão agendada para esta data.';
+        } else {
+          dayDetailsSubtitleEl.textContent = `${revisoes.length} revisão(ões) agendada(s).`;
+        }
+      }
+
+      if (!revisoes || revisoes.length === 0) {
+        dayDetailsContentEl.innerHTML = '<div class="empty-state"><p>Sem revisões cadastradas para esta data.</p></div>';
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+
+      revisoes.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'drawer-item';
+
+        const alvo = item.alvo || '';
+        const alvoParts = alvo.split('::');
+        const area = item.area || alvoParts[0] || 'Área não definida';
+        const subarea = item.subarea || alvoParts[1] || '';
+
+        const prioridade = Number(item.prioridade);
+        const estabilidade = Number(item.estabilidade);
+        const lapses = Number(item.lapses);
+        const ultima = item.ultimaRevisao || '';
+
+        const metaChips = [];
+        if (!isNaN(estabilidade) && estabilidade > 0) {
+          metaChips.push(`<span class="chip">Estab: ${estabilidade.toFixed(1)}d</span>`);
+        }
+        if (!isNaN(prioridade)) {
+          metaChips.push(`<span class="chip neutral">Prioridade ${(prioridade).toFixed(3)}</span>`);
+        }
+        if (!isNaN(lapses) && lapses > 0) {
+          metaChips.push('<span class="chip" style="background: rgba(239, 68, 68, 0.15); color: var(--error);">Lapses ' + lapses + '</span>');
+        }
+
+        const metaMarkup = metaChips.length ? `<div class="drawer-meta">${metaChips.join('')}</div>` : '';
+
+        const statsChips = [];
+        if (item.stats) {
+          const ac28 = Number(item.stats.acerto_28d);
+          const acVida = Number(item.stats.acerto_vida);
+          const blocos = Number(item.stats.total_blocos);
+          if (!isNaN(ac28) && ac28 > 0) {
+            statsChips.push(`<span class="chip">28d: ${(ac28 * 100).toFixed(0)}%</span>`);
+          } else if (!isNaN(acVida) && acVida > 0) {
+            statsChips.push(`<span class="chip">Vida: ${(acVida * 100).toFixed(0)}%</span>`);
+          }
+          if (!isNaN(blocos) && blocos > 0) {
+            statsChips.push(`<span class="chip neutral">Blocos ${blocos}</span>`);
+          }
+        }
+
+        const statsMarkup = statsChips.length ? `<div class="drawer-meta">${statsChips.join('')}</div>` : '';
+
+        const historyEntries = Array.isArray(item.history) ? item.history.slice(0, 5) : [];
+        const historyHtml = historyEntries.length
+          ? `<ul class="history-list">${historyEntries.map(entry => {
+              const pct = typeof entry.acertoPct === 'number'
+                ? `${entry.acertoPct.toFixed(0)}%`
+                : '—';
+              return `<li><span>${formatShortDate(entry.data)}</span><span class="history-badge">${entry.acertos}/${entry.total} (${pct})</span></li>`;
+            }).join('')}</ul>`
+          : '<p class="helper-text" style="margin-bottom:0;">Sem histórico recente registrado.</p>';
+
+        card.innerHTML = `
+          <h4>${area}${subarea ? '<br><span style="color: var(--text-secondary); font-size: 0.85rem;">' + subarea + '</span>' : ''}</h4>
+          ${metaMarkup}
+          ${statsMarkup}
+          ${ultima ? `<p class="helper-text" style="margin-top: -4px;">Última revisão: ${formatShortDate(ultima)}</p>` : ''}
+          <div>
+            <p class="drawer-section-title">Histórico recente</p>
+            ${historyHtml}
+          </div>
+        `;
+
+        fragment.appendChild(card);
+      });
+
+      dayDetailsContentEl.innerHTML = '';
+      dayDetailsContentEl.appendChild(fragment);
     }
 
     // ========================================================================
@@ -943,6 +1305,7 @@
           if (result && result.ok) {
             toast('✓ Bloco salvo com sucesso!', 'success');
             limparFormBloco();
+            processarDados({ origin: 'auto' });
           } else {
             toast('✗ Erro: ' + (result ? result.error : 'Sem resposta'), 'error');
           }
@@ -964,28 +1327,33 @@
       setDefaultDate();
     }
 
-    function processarDados() {
+    function processarDados(options = {}) {
+      const origin = options.origin || 'manual';
       setLoading(true);
-      
-      // Timeout de segurança (30 segundos)
+
       const timeoutId = setTimeout(function() {
         setLoading(false);
         toast('Processamento demorou muito. Verifique os logs do Apps Script.', 'warning');
       }, 30000);
-      
+
       google.script.run
         .withSuccessHandler(function(result) {
           clearTimeout(timeoutId);
+          setLoading(false);
+
           if (result && result.ok) {
-            toast(result.message || 'Dados processados!', 'success');
-            // Recarregar dashboard se estiver nele
+            const message = origin === 'auto'
+              ? 'Estatísticas atualizadas automaticamente.'
+              : (result.message || 'Dados processados!');
+            toast(message, 'success');
+
             if (document.getElementById('dashboard').classList.contains('active')) {
-              setTimeout(carregarDadosDashboard, 1000);
+              carregarDadosDashboard();
             }
+            atualizarFilaHojeSilencioso();
           } else {
             toast('Erro: ' + (result ? result.error : 'Resposta inválida'), 'error');
           }
-          setLoading(false);
         })
         .withFailureHandler(function(error) {
           clearTimeout(timeoutId);
@@ -995,45 +1363,75 @@
         .apiProcessAll();
     }
 
-    // ========================================================================
-    // REVISÕES
-    // ========================================================================
-    function gerarFilaHoje() {
-      setLoading(true);
-      
-      const timeoutId = setTimeout(function() {
-        setLoading(false);
-        toast('Tempo esgotado ao gerar fila. Tente novamente.', 'warning');
-        document.getElementById('filaBody').innerHTML = 
-          '<tr><td colspan="4" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
-      }, 15000);
-      
+    function atualizarFilaHojeSilencioso() {
       google.script.run
         .withSuccessHandler(function(result) {
-          clearTimeout(timeoutId);
-          setLoading(false);
-          
           if (result && result.ok) {
             reviewQueue = result.data || [];
             renderFilaRevisoes(reviewQueue);
-            
-            if (result.count === 0) {
-              toast('✓ Nenhuma revisão vencida hoje. Próximas revisões em breve!', 'success');
-            } else {
-              toast(`✓ ${result.count} revisão(ões) encontrada(s)`, 'success');
+            if (typeof result.count === 'number') {
+              document.getElementById('kpiRevisoesHoje').textContent = result.count;
             }
-          } else {
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.warn('Erro ao atualizar fila silenciosamente:', error);
+        })
+        .apiMakeReviewToday();
+    }
+
+    // ========================================================================
+    // REVISÕES
+    // ========================================================================
+    function gerarFilaHoje(options = {}) {
+      const silent = options.silent === true;
+      let timeoutId = null;
+
+      if (!silent) {
+        setLoading(true);
+        timeoutId = setTimeout(function() {
+          setLoading(false);
+          toast('Tempo esgotado ao gerar fila. Tente novamente.', 'warning');
+          document.getElementById('filaBody').innerHTML =
+            '<tr><td colspan="4" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
+        }, 15000);
+      }
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (timeoutId) clearTimeout(timeoutId);
+          if (!silent) setLoading(false);
+
+          if (result && result.ok) {
+            reviewQueue = result.data || [];
+            renderFilaRevisoes(reviewQueue);
+
+            const count = result.count || 0;
+            document.getElementById('kpiRevisoesHoje').textContent = count;
+
+            if (!silent) {
+              if (count === 0) {
+                toast('✓ Nenhuma revisão vencida hoje. Próximas revisões em breve!', 'success');
+              } else {
+                toast(`✓ ${count} revisão(ões) encontrada(s)`, 'success');
+              }
+            }
+          } else if (!silent) {
             toast('Erro: ' + (result ? result.error : 'Sem resposta'), 'error');
             document.getElementById('filaBody').innerHTML =
               '<tr><td colspan="4" class="empty-state">Erro ao gerar fila.</td></tr>';
           }
         })
         .withFailureHandler(function(error) {
-          clearTimeout(timeoutId);
-          setLoading(false);
-          toast('Erro: ' + error.message, 'error');
-          document.getElementById('filaBody').innerHTML =
-            '<tr><td colspan="4" class="empty-state">Erro de conexão.</td></tr>';
+          if (timeoutId) clearTimeout(timeoutId);
+          if (!silent) {
+            setLoading(false);
+            toast('Erro: ' + error.message, 'error');
+            document.getElementById('filaBody').innerHTML =
+              '<tr><td colspan="4" class="empty-state">Erro de conexão.</td></tr>';
+          } else {
+            console.warn('Erro ao gerar fila:', error);
+          }
         })
         .apiMakeReviewToday();
     }
@@ -1071,6 +1469,7 @@
         tbody.appendChild(row);
       });
     }
+
 
     function salvarRevisao() {
       const alvoInput = document.getElementById('revisaoAlvo').value.trim();
@@ -1136,7 +1535,10 @@
           if (result.ok) {
             toast('Revisão registrada!', 'success');
             limparFormRevisao();
-            gerarFilaHoje();
+            gerarFilaHoje({ silent: true });
+            if (document.getElementById('dashboard').classList.contains('active')) {
+              carregarDadosDashboard();
+            }
           } else {
             toast('Erro ao registrar: ' + result.error, 'error');
           }
