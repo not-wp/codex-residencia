@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Revisão Espaçada - Residência Médica</title>
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #cbd5e1;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #10b981;
+      --error: #ef4444;
+      --warning: #f59e0b;
+      --border: #475569;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* Header & Tabs */
+    header {
+      background: var(--bg-secondary);
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 30px;
+      border-radius: 8px;
+    }
+
+    .header-content {
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 20px;
+      color: var(--accent);
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      padding: 12px 24px;
+      background: var(--bg-tertiary);
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      background: var(--accent-hover);
+      color: var(--text-primary);
+    }
+
+    .tab.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    /* Pages */
+    .page {
+      display: none;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border);
+    }
+
+    .card h2 {
+      font-size: 1.4rem;
+      margin-bottom: 16px;
+      color: var(--accent);
+    }
+
+    .card h3 {
+      font-size: 1.1rem;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-size: 0.95rem;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-success {
+      background: var(--success);
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #059669;
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border);
+    }
+
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 0.85rem;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+
+    th, td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    tr:hover {
+      background: var(--bg-tertiary);
+    }
+
+    /* KPIs */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi-card {
+      background: var(--bg-tertiary);
+      padding: 20px;
+      border-radius: 8px;
+      border-left: 4px solid var(--accent);
+    }
+
+    .kpi-value {
+      font-size: 2rem;
+      font-weight: bold;
+      color: var(--accent);
+    }
+
+    .kpi-label {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* Loading Overlay */
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .loading-overlay.active {
+      display: flex;
+    }
+
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid var(--bg-tertiary);
+      border-top: 4px solid var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 16px 24px;
+      border-radius: 8px;
+      color: white;
+      font-weight: 500;
+      z-index: 10000;
+      animation: slideIn 0.3s ease-out;
+      max-width: 400px;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .toast.success {
+      background: var(--success);
+    }
+
+    .toast.error {
+      background: var(--error);
+    }
+
+    .toast.warning {
+      background: var(--warning);
+    }
+
+    /* Algorithm Explanation */
+    .algo-section {
+      background: var(--bg-tertiary);
+      padding: 16px;
+      border-radius: 6px;
+      margin-bottom: 16px;
+      border-left: 3px solid var(--accent);
+    }
+
+    .algo-section h4 {
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .algo-section p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.8;
+    }
+
+    .algo-section code {
+      background: var(--bg-primary);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'Courier New', monospace;
+      color: var(--warning);
+    }
+
+    /* Settings Grid */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state svg {
+      width: 80px;
+      height: 80px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .container {
+        padding: 10px;
+      }
+
+      h1 {
+        font-size: 1.4rem;
+      }
+
+      .kpi-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        font-size: 0.85rem;
+      }
+
+      th, td {
+        padding: 8px;
+      }
+    }
+
+    /* Chart Container */
+    #chartContainer {
+      min-height: 400px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner"></div>
+  </div>
+
+  <div class="container">
+    <header>
+      <div class="header-content">
+        <h1>📚 Sistema de Revisão Espaçada - Residência Médica</h1>
+        <div class="tabs">
+          <button class="tab active" onclick="switchPage('dashboard')">Dashboard</button>
+          <button class="tab" onclick="switchPage('lancar')">Lançar Bloco</button>
+          <button class="tab" onclick="switchPage('revisoes')">Revisões</button>
+          <button class="tab" onclick="switchPage('ajustes')">Ajustes</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard" class="page active">
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-value" id="kpiRevisoesHoje">-</div>
+          <div class="kpi-label">Revisões Hoje</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value" id="kpiMetaAtual">-</div>
+          <div class="kpi-label">Meta de Retenção</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-value" id="kpiProximos7d">-</div>
+          <div class="kpi-label">Próximos 7 Dias</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Desempenho por Área</h2>
+        <div id="chartContainer"></div>
+      </div>
+
+      <div class="card">
+        <h2>Calendário de Revisões (Próximos 28 Dias)</h2>
+        <div style="overflow-x: auto;">
+          <table id="calendarTable">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Quantidade</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="calendarBody">
+              <tr><td colspan="3" class="empty-state">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- LANÇAR BLOCO -->
+    <div id="lancar" class="page">
+      <div class="card">
+        <h2>Lançar Novo Bloco de Questões</h2>
+        <form id="formBloco" onsubmit="return false;">
+          <div class="form-group">
+            <label>Data</label>
+            <input type="date" id="blocoData" required>
+          </div>
+          <div class="form-group">
+            <label>Área</label>
+            <input type="text" id="blocoArea" placeholder="Ex: Clínica Médica" required>
+          </div>
+          <div class="form-group">
+            <label>Subárea</label>
+            <input type="text" id="blocoSubarea" placeholder="Ex: Cardiologia" required>
+          </div>
+          <div class="form-group">
+            <label>Total de Questões</label>
+            <input type="number" id="blocoTotal" min="1" required>
+          </div>
+          <div class="form-group">
+            <label>Acertos</label>
+            <input type="number" id="blocoAcertos" min="0" required>
+          </div>
+          <div class="form-group">
+            <label>Tempo Médio por Questão (segundos)</label>
+            <input type="number" id="blocoTempo" min="0" step="0.1" value="60">
+          </div>
+          <div class="form-group">
+            <label>Dificuldade Percebida</label>
+            <select id="blocoDif">
+              <option value="1">1 - Muito Fácil</option>
+              <option value="2">2 - Fácil</option>
+              <option value="3" selected>3 - Médio</option>
+              <option value="4">4 - Difícil</option>
+              <option value="5">5 - Muito Difícil</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Observações</label>
+            <textarea id="blocoObs" placeholder="Anotações sobre o bloco..."></textarea>
+          </div>
+          <button type="button" class="btn btn-primary" onclick="salvarBloco()">Salvar Bloco</button>
+          <button type="button" class="btn btn-secondary" onclick="processarDados()" style="margin-top: 10px;">
+          🔄 Processar Dados (atualizar estatísticas)
+          </button>
+          <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 8px;">
+            Clique após lançar blocos para calcular revisões
+          </p>
+        </form>
+      </div>
+    </div>
+
+    <!-- REVISÕES -->
+    <div id="revisoes" class="page">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h2>Fila de Revisões de Hoje</h2>
+          <button class="btn btn-secondary" onclick="gerarFilaHoje()">🔄 Gerar Fila</button>
+        </div>
+        <div style="overflow-x: auto;">
+          <table id="filaTable">
+            <thead>
+              <tr>
+                <th>Alvo</th>
+                <th>Prioridade</th>
+                <th>Próxima Revisão</th>
+                <th>Estabilidade (dias)</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="filaBody">
+              <tr><td colspan="5" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Registrar Desfecho de Revisão</h2>
+        <form id="formRevisao" onsubmit="return false;">
+          <div class="form-group">
+            <label>Alvo (Área::Subárea)</label>
+            <input type="text" id="revisaoAlvo" placeholder="Ex: Clínica Médica::Cardiologia" required>
+          </div>
+          <div class="form-group">
+            <label>Dias desde a última revisão</label>
+            <input type="number" id="revisaoTDias" min="0" required>
+          </div>
+          <div class="form-group">
+            <label>Acertou?</label>
+            <select id="revisaoAcertou" required>
+              <option value="1">Sim</option>
+              <option value="0">Não</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Dificuldade Percebida</label>
+            <select id="revisaoDif">
+              <option value="1">1 - Muito Fácil</option>
+              <option value="2">2 - Fácil</option>
+              <option value="3" selected>3 - Médio</option>
+              <option value="4">4 - Difícil</option>
+              <option value="5">5 - Muito Difícil</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Tempo Gasto (segundos)</label>
+            <input type="number" id="revisaoTempo" min="0" step="0.1" value="60">
+          </div>
+          <div class="form-group">
+            <label>Observações</label>
+            <textarea id="revisaoObs" placeholder="Anotações sobre a revisão..."></textarea>
+          </div>
+          <button type="button" class="btn btn-success" onclick="salvarRevisao()">Registrar Desfecho</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- AJUSTES -->
+    <div id="ajustes" class="page">
+      <div class="card">
+        <h2>Como Funciona o Algoritmo</h2>
+        
+        <div class="algo-section">
+          <h4>1. Probabilidade de Lembrar</h4>
+          <p>
+            A probabilidade de você lembrar de um conteúdo após <code>t</code> dias é calculada pela fórmula:
+            <strong>R(t) = e<sup>-t/S</sup></strong>, onde <code>S</code> é a estabilidade (em dias).
+            A meta de retenção (<code>R*</code>) define quando você deve revisar novamente.
+            O intervalo ótimo é: <strong>I = -S × ln(meta)</strong>.
+          </p>
+        </div>
+
+        <div class="algo-section">
+          <h4>2. Estabilidade por Subárea</h4>
+          <p>
+            Cada subárea tem uma estabilidade diferente, calculada por:
+            <strong>ln(S) = θ₀ + θ₁ × competência + θ₂ × dificuldadeNorm</strong>.
+            <br>• <code>competência</code> = taxa de acerto nos últimos 28 dias (ou geral)<br>
+            • <code>dificuldadeNorm</code> = (dificuldade percebida - 1) / 4, escala de 0 a 1
+          </p>
+        </div>
+
+        <div class="algo-section">
+          <h4>3. Aprendizado Online</h4>
+          <p>
+            O modelo aprende com cada revisão usando regressão ridge:
+            <strong>θ ← (1-λ)θ + η(ln S<sub>obs</sub> - ln S<sub>hat</sub>)x</strong>.
+            <br>• <code>S<sub>obs</sub></code> é derivado do resultado real da revisão<br>
+            • Os parâmetros θ₀, θ₁, θ₂ são ajustados gradualmente<br>
+            • Caps de segurança são aplicados (Smin, Smax, Imin, Imax)
+          </p>
+        </div>
+
+        <div class="algo-section">
+          <h4>4. Prioridade do Dia</h4>
+          <p>
+            Para ordenar a fila de revisões, calculamos:
+            <strong>Prioridade = (1 - R(t)) + w<sub>Peg</sub>×peg + w<sub>Tempo</sub>×tempo + w<sub>Dif</sub>×dif + overdue</strong>.
+            <br>• <code>overdue</code> penaliza itens atrasados: alpha × min(1.5, atraso/S)<br>
+            • Pegadinhas, tempo gasto e dificuldade somam custos adicionais
+          </p>
+        </div>
+
+        <div class="algo-section">
+          <h4>5. Resets Suaves</h4>
+          <p>
+            Se sua taxa de acerto nos últimos 7 dias for menor que 50%, o sistema reduz parcialmente
+            a estabilidade antes de calcular o próximo intervalo, evitando sobrecarga.
+          </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Configurações do Algoritmo</h2>
+        <div class="settings-grid">
+          <div class="form-group">
+            <label>Meta de Retenção (0.70-0.98)</label>
+            <input type="number" id="setRetention" step="0.01" min="0.70" max="0.98">
+          </div>
+          <div class="form-group">
+            <label>Peso Pegadinhas</label>
+            <input type="number" id="setWPeg" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Peso Tempo</label>
+            <input type="number" id="setWTempo" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Peso Dificuldade</label>
+            <input type="number" id="setWDif" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Alpha (overdue)</label>
+            <input type="number" id="setAlpha" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Modo Overdue</label>
+            <select id="setOverdueMode">
+              <option value="linear">Linear</option>
+              <option value="softplus">Softplus</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Taxa de Aprendizado (η)</label>
+            <input type="number" id="setLrEta" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Regularização (λ)</label>
+            <input type="number" id="setRegLambda" step="0.001">
+          </div>
+          <div class="form-group">
+            <label>S mínimo (dias)</label>
+            <input type="number" id="setSmin" min="1">
+          </div>
+          <div class="form-group">
+            <label>S máximo (dias)</label>
+            <input type="number" id="setSmax" min="1">
+          </div>
+          <div class="form-group">
+            <label>I mínimo (dias)</label>
+            <input type="number" id="setImin" min="1">
+          </div>
+          <div class="form-group">
+            <label>I máximo (dias)</label>
+            <input type="number" id="setImax" min="1">
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button class="btn btn-primary" onclick="salvarAjustes()">💾 Salvar Ajustes</button>
+          <button class="btn btn-secondary" onclick="recalcularModelo()">🔄 Recalcular Modelo</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Diagnóstico</h2>
+        <button class="btn btn-primary" onclick="processarDados()">🔄 Processar Dados</button>
+        <button class="btn btn-secondary" onclick="mostrarDiagnostico()">📊 Info da Planilha</button>
+        <div id="diagnosticoInfo" style="margin-top: 12px; color: var(--text-secondary); font-size: 0.9rem;"></div>
+        
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========================================================================
+    // GLOBAL STATE
+    // ========================================================================
+    let currentSettings = {};
+    let reviewQueue = [];
+
+    // ========================================================================
+    // UI UTILITIES
+    // ========================================================================
+    function setLoading(show) {
+      document.getElementById('loadingOverlay').classList.toggle('active', show);
+    }
+
+    function toast(message, type = 'success') {
+      const existing = document.querySelector('.toast');
+      if (existing) existing.remove();
+
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      setTimeout(() => toast.remove(), 4000);
+    }
+
+    function switchPage(pageId) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      
+      document.getElementById(pageId).classList.add('active');
+      event.target.classList.add('active');
+
+      if (pageId === 'dashboard') loadDashboard();
+      if (pageId === 'ajustes') loadAjustes();
+      // REMOVER O AUTO-LOAD DE REVISÕES
+      // if (pageId === 'revisoes') gerarFilaHoje();
+    }
+
+    // ========================================================================
+    // INITIALIZATION
+    // ========================================================================
+    window.onload = function() {
+      setLoading(true);
+      google.charts.load('current', {'packages':['corechart']});
+      google.charts.setOnLoadCallback(function() {
+        initApp();
+      });
+    };
+
+    function initApp() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.ok) {
+            toast('Sistema inicializado com sucesso!', 'success');
+            carregarDadosDashboard();
+            setDefaultDate();
+          } else {
+            toast('Erro ao inicializar: ' + result.error, 'error');
+          }
+          setLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          toast('Erro de conexão: ' + error.message, 'error');
+          setLoading(false);
+        })
+        .apiInit();
+    }
+
+    function setDefaultDate() {
+      const today = new Date().toISOString().split('T')[0];
+      document.getElementById('blocoData').value = today;
+    }
+
+    // ========================================================================
+    // DASHBOARD
+    // ========================================================================
+    function loadDashboard() {
+      setLoading(true);
+      carregarDadosDashboard();
+    }
+
+    function carregarDadosDashboard() {
+      // Load settings for KPI
+      google.script.run
+        .withSuccessHandler(function(settings) {
+          currentSettings = settings;
+          document.getElementById('kpiMetaAtual').textContent = 
+            (settings.retentionTarget * 100).toFixed(0) + '%';
+        })
+        .withFailureHandler(handleError)
+        .apiGetSettings();
+
+      // Load chart
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.ok && result.data.length > 1) {
+            drawChart(result.data);
+          } else {
+            document.getElementById('chartContainer').innerHTML = 
+              '<div class="empty-state"><p>Nenhum dado disponível para gráfico</p></div>';
+          }
+        })
+        .withFailureHandler(handleError)
+        .apiChartData();
+
+      // Load calendar
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.ok) {
+            renderCalendar(result.data);
+            updateKPIs(result.data);
+          }
+          setLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          handleError(error);
+          setLoading(false);
+        })
+        .apiGetReviewCalendar(28);
+
+      // Load review queue count
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.ok) {
+            document.getElementById('kpiRevisoesHoje').textContent = result.count || 0;
+          }
+        })
+        .withFailureHandler(handleError)
+        .apiMakeReviewToday();
+    }
+
+    function drawChart(data) {
+      const chartData = google.visualization.arrayToDataTable(data);
+      const options = {
+        title: 'Taxa de Acerto por Área',
+        backgroundColor: '#1e293b',
+        titleTextStyle: { color: '#f1f5f9', fontSize: 16 },
+        legend: { position: 'none' },
+        hAxis: {
+          textStyle: { color: '#cbd5e1' },
+          titleTextStyle: { color: '#cbd5e1' }
+        },
+        vAxis: {
+          title: 'Acerto (%)',
+          textStyle: { color: '#cbd5e1' },
+          titleTextStyle: { color: '#cbd5e1' },
+          minValue: 0,
+          maxValue: 100
+        },
+        colors: ['#3b82f6'],
+        chartArea: { width: '80%', height: '70%' }
+      };
+
+      const chart = new google.visualization.ColumnChart(document.getElementById('chartContainer'));
+      chart.draw(chartData, options);
+    }
+
+    function renderCalendar(data) {
+      const tbody = document.getElementById('calendarBody');
+      tbody.innerHTML = '';
+
+      if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Nenhuma revisão agendada</td></tr>';
+        return;
+      }
+
+      data.forEach(item => {
+        const row = document.createElement('tr');
+        const dateObj = new Date(item.data + 'T00:00:00');
+        const dateStr = dateObj.toLocaleDateString('pt-BR');
+        
+        row.innerHTML = `
+          <td>${dateStr}</td>
+          <td>${item.quantidade}</td>
+          <td><button class="btn btn-secondary btn-small" onclick="verDetalhesData('${item.data}')">Ver</button></td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    function updateKPIs(calendarData) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      let proximos7d = 0;
+      calendarData.forEach(item => {
+        const itemDate = new Date(item.data + 'T00:00:00');
+        const diffDays = Math.floor((itemDate - today) / (1000 * 60 * 60 * 24));
+        if (diffDays >= 0 && diffDays <= 7) {
+          proximos7d += item.quantidade;
+        }
+      });
+
+      document.getElementById('kpiProximos7d').textContent = proximos7d;
+    }
+
+    function verDetalhesData(dateISO) {
+      alert(`Detalhes para ${dateISO} serão mostrados aqui.\nImplementação: carregar alvos específicos do dia.`);
+    }
+
+    // ========================================================================
+    // LANÇAR BLOCO
+    // ========================================================================
+    function salvarBloco() {
+      const payload = {
+        data: document.getElementById('blocoData').value,
+        area: document.getElementById('blocoArea').value.trim(),
+        subarea: document.getElementById('blocoSubarea').value.trim(),
+        total: parseInt(document.getElementById('blocoTotal').value),
+        acertos: parseInt(document.getElementById('blocoAcertos').value),
+        tempoMedioSeg: parseFloat(document.getElementById('blocoTempo').value),
+        difPercebida: parseInt(document.getElementById('blocoDif').value),
+        obs: document.getElementById('blocoObs').value.trim()
+      };
+
+      if (!payload.area || !payload.subarea) {
+        toast('Preencha área e subárea', 'warning');
+        return;
+      }
+
+      if (payload.acertos > payload.total) {
+        toast('Acertos não pode ser maior que o total', 'warning');
+        return;
+      }
+
+      console.log('Enviando payload:', payload);
+      setLoading(true);
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          console.log('Resposta recebida:', result);
+          setLoading(false);
+          
+          if (result && result.ok) {
+            toast('✓ Bloco salvo com sucesso!', 'success');
+            limparFormBloco();
+          } else {
+            toast('✗ Erro: ' + (result ? result.error : 'Sem resposta'), 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          console.error('Erro na chamada:', error);
+          setLoading(false);
+          toast('✗ Erro de conexão: ' + error.message, 'error');
+        })
+        .apiLogBlock(payload);
+    }
+
+    function limparFormBloco() {
+      document.getElementById('blocoTotal').value = '';
+      document.getElementById('blocoAcertos').value = '';
+      document.getElementById('blocoTempo').value = '60';
+      document.getElementById('blocoDif').value = '3';
+      document.getElementById('blocoObs').value = '';
+      setDefaultDate();
+    }
+
+    function processarDados() {
+      setLoading(true);
+      
+      // Timeout de segurança (30 segundos)
+      const timeoutId = setTimeout(function() {
+        setLoading(false);
+        toast('Processamento demorou muito. Verifique os logs do Apps Script.', 'warning');
+      }, 30000);
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          clearTimeout(timeoutId);
+          if (result && result.ok) {
+            toast(result.message || 'Dados processados!', 'success');
+            // Recarregar dashboard se estiver nele
+            if (document.getElementById('dashboard').classList.contains('active')) {
+              setTimeout(carregarDadosDashboard, 1000);
+            }
+          } else {
+            toast('Erro: ' + (result ? result.error : 'Resposta inválida'), 'error');
+          }
+          setLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          clearTimeout(timeoutId);
+          toast('Erro ao processar: ' + error.message, 'error');
+          setLoading(false);
+        })
+        .apiProcessAll();
+    }
+
+    // ========================================================================
+    // REVISÕES
+    // ========================================================================
+    function gerarFilaHoje() {
+      setLoading(true);
+      
+      const timeoutId = setTimeout(function() {
+        setLoading(false);
+        toast('Tempo esgotado ao gerar fila. Tente novamente.', 'warning');
+        document.getElementById('filaBody').innerHTML = 
+          '<tr><td colspan="5" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
+      }, 15000);
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          clearTimeout(timeoutId);
+          setLoading(false);
+          
+          if (result && result.ok) {
+            reviewQueue = result.data || [];
+            renderFilaRevisoes(reviewQueue);
+            
+            if (result.count === 0) {
+              toast('✓ Nenhuma revisão vencida hoje. Próximas revisões em breve!', 'success');
+            } else {
+              toast(`✓ ${result.count} revisão(ões) encontrada(s)`, 'success');
+            }
+          } else {
+            toast('Erro: ' + (result ? result.error : 'Sem resposta'), 'error');
+            document.getElementById('filaBody').innerHTML = 
+              '<tr><td colspan="5" class="empty-state">Erro ao gerar fila.</td></tr>';
+          }
+        })
+        .withFailureHandler(function(error) {
+          clearTimeout(timeoutId);
+          setLoading(false);
+          toast('Erro: ' + error.message, 'error');
+          document.getElementById('filaBody').innerHTML = 
+            '<tr><td colspan="5" class="empty-state">Erro de conexão.</td></tr>';
+        })
+        .apiMakeReviewToday();
+    }
+
+    function renderFilaRevisoes(queue) {
+      const tbody = document.getElementById('filaBody');
+      tbody.innerHTML = '';
+
+      if (queue.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma revisão pendente hoje</td></tr>';
+        return;
+      }
+
+      queue.forEach((item, idx) => {
+        const row = document.createElement('tr');
+        const proxRevisao = new Date(item.proximaRevisao);
+        const dateStr = proxRevisao.toLocaleDateString('pt-BR');
+        
+        row.innerHTML = `
+          <td>${item.alvo}</td>
+          <td>${item.prioridade.toFixed(3)}</td>
+          <td>${dateStr}</td>
+          <td>${item.estabilidade.toFixed(1)}</td>
+          <td>
+            <button class="btn btn-success btn-small" onclick="marcarFeito('${item.alvo}')">✓ Feito</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    function marcarFeito(alvo) {
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.ok) {
+            toast('Marcado como feito!', 'success');
+            document.getElementById('revisaoAlvo').value = alvo;
+            reviewQueue = reviewQueue.filter(r => r.alvo !== alvo);
+            renderFilaRevisoes(reviewQueue);
+          } else {
+            toast('Erro: ' + result.error, 'error');
+          }
+          setLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          handleError(error);
+          setLoading(false);
+        })
+        .apiApplyReviewDone([alvo]);
+    }
+
+    function salvarRevisao() {
+      const payload = {
+        alvo: document.getElementById('revisaoAlvo').value.trim(),
+        tDias: parseFloat(document.getElementById('revisaoTDias').value),
+        acertou: parseInt(document.getElementById('revisaoAcertou').value) === 1,
+        difPercebida: parseInt(document.getElementById('revisaoDif').value),
+        tempoSeg: parseFloat(document.getElementById('revisaoTempo').value),
+        obs: document.getElementById('revisaoObs').value.trim()
+      };
+
+      if (!payload.alvo) {
+        toast('Preencha o alvo (Área::Subárea)', 'warning');
+        return;
+      }
+
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.ok) {
+            toast('Desfecho registrado com sucesso!', 'success');
+            limparFormRevisao();
+            gerarFilaHoje();
+          } else {
+            toast('Erro ao registrar: ' + result.error, 'error');
+          }
+          setLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          handleError(error);
+          setLoading(false);
+        })
+        .apiLogReviewOutcome(payload);
+    }
+
+    function limparFormRevisao() {
+      document.getElementById('revisaoAlvo').value = '';
+      document.getElementById('revisaoTDias').value = '';
+      document.getElementById('revisaoAcertou').value = '1';
+      document.getElementById('revisaoDif').value = '3';
+      document.getElementById('revisaoTempo').value = '60';
+      document.getElementById('revisaoObs').value = '';
+    }
+
+    // ========================================================================
+    // AJUSTES
+    // ========================================================================
+    function loadAjustes() {
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(settings) {
+          currentSettings = settings;
+          preencherFormAjustes(settings);
+          setLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          handleError(error);
+          setLoading(false);
+        })
+        .apiGetSettings();
+    }
+
+    function preencherFormAjustes(settings) {
+      document.getElementById('setRetention').value = settings.retentionTarget;
+      document.getElementById('setWPeg').value = settings.wPeg;
+      document.getElementById('setWTempo').value = settings.wTempo;
+      document.getElementById('setWDif').value = settings.wDif;
+      document.getElementById('setAlpha').value = settings.alpha;
+      document.getElementById('setOverdueMode').value = settings.overdueMode;
+      document.getElementById('setLrEta').value = settings.lrEta;
+      document.getElementById('setRegLambda').value = settings.regLambda;
+      document.getElementById('setSmin').value = settings.Smin;
+      document.getElementById('setSmax').value = settings.Smax;
+      document.getElementById('setImin').value = settings.Imin;
+      document.getElementById('setImax').value = settings.Imax;
+    }
+
+    function salvarAjustes() {
+      const settings = {
+        retentionTarget: parseFloat(document.getElementById('setRetention').value),
+        wPeg: parseFloat(document.getElementById('setWPeg').value),
+        wTempo: parseFloat(document.getElementById('setWTempo').value),
+        wDif: parseFloat(document.getElementById('setWDif').value),
+        alpha: parseFloat(document.getElementById('setAlpha').value),
+        overdueMode: document.getElementById('setOverdueMode').value,
+        lrEta: parseFloat(document.getElementById('setLrEta').value),
+        regLambda: parseFloat(document.getElementById('setRegLambda').value),
+        halfLifeDecayDays: currentSettings.halfLifeDecayDays || 56,
+        reviewOutcomeWeight: currentSettings.reviewOutcomeWeight || 3.0,
+        Smin: parseFloat(document.getElementById('setSmin').value),
+        Smax: parseFloat(document.getElementById('setSmax').value),
+        Imin: parseFloat(document.getElementById('setImin').value),
+        Imax: parseFloat(document.getElementById('setImax').value),
+        betaUncertainty: currentSettings.betaUncertainty || 0.5,
+        shrinkageC: currentSettings.shrinkageC || 8.0,
+        planGainMix: currentSettings.planGainMix || 0.5
+      };
+
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.ok) {
+            toast('Ajustes salvos com sucesso!', 'success');
+            currentSettings = settings;
+          } else {
+            toast('Erro ao salvar: ' + result.error, 'error');
+          }
+          setLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          handleError(error);
+          setLoading(false);
+        })
+        .apiSaveSettings(settings);
+    }
+
+    function recalcularModelo() {
+      if (!confirm('Recalcular o modelo irá reprocessar todo o histórico de revisões. Continuar?')) {
+        return;
+      }
+
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.ok) {
+            toast(`Modelo recalculado! ${result.modelsUpdated} alvos atualizados`, 'success');
+            gerarFilaHoje();
+          } else {
+            toast('Erro ao recalcular: ' + result.error, 'error');
+          }
+          setLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          handleError(error);
+          setLoading(false);
+        })
+        .apiRecompute();
+    }
+
+    function mostrarDiagnostico() {
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(info) {
+          const div = document.getElementById('diagnosticoInfo');
+          div.innerHTML = `
+            <strong>Nome:</strong> ${info.name}<br>
+            <strong>ID:</strong> ${info.id}<br>
+            <strong>URL:</strong> <a href="${info.url}" target="_blank" style="color: var(--accent);">${info.url}</a>
+          `;
+          setLoading(false);
+        })
+        .withFailureHandler(function(error) {
+          handleError(error);
+          setLoading(false);
+        })
+        .apiWhereAmI();
+    }
+
+    // ========================================================================
+    // ERROR HANDLER
+    // ========================================================================
+    function handleError(error) {
+      console.error('Erro:', error);
+      toast('Erro: ' + (error.message || error.toString()), 'error');
+    }
+  </script>
+</body>
+</html>
