@@ -520,33 +520,46 @@
                 <th>Prioridade</th>
                 <th>Próxima Revisão</th>
                 <th>Estabilidade (dias)</th>
-                <th>Ações</th>
               </tr>
             </thead>
             <tbody id="filaBody">
-              <tr><td colspan="5" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
+              <tr><td colspan="4" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
       <div class="card">
-        <h2>Registrar Desfecho de Revisão</h2>
+        <h2>Registrar Revisão</h2>
         <form id="formRevisao" onsubmit="return false;">
           <div class="form-group">
             <label>Alvo (Área::Subárea)</label>
-            <input type="text" id="revisaoAlvo" placeholder="Ex: Clínica Médica::Cardiologia" required>
+            <input type="text" id="revisaoAlvo" placeholder="Ex: Clínica Médica::Cardiologia">
+            <small style="color: var(--text-secondary); font-size: 0.75rem;">Preencha o alvo completo ou informe área e subárea abaixo.</small>
+          </div>
+          <div class="form-group">
+            <label>Área</label>
+            <input type="text" id="revisaoArea" placeholder="Ex: Clínica Médica">
+          </div>
+          <div class="form-group">
+            <label>Subárea</label>
+            <input type="text" id="revisaoSubarea" placeholder="Ex: Cardiologia">
           </div>
           <div class="form-group">
             <label>Dias desde a última revisão</label>
-            <input type="number" id="revisaoTDias" min="0" required>
+            <input type="number" id="revisaoTDias" min="0" placeholder="Ex: 7">
           </div>
           <div class="form-group">
-            <label>Acertou?</label>
-            <select id="revisaoAcertou" required>
-              <option value="1">Sim</option>
-              <option value="0">Não</option>
-            </select>
+            <label>Total de Questões</label>
+            <input type="number" id="revisaoTotal" min="1" required>
+          </div>
+          <div class="form-group">
+            <label>Acertos</label>
+            <input type="number" id="revisaoAcertos" min="0" required>
+          </div>
+          <div class="form-group">
+            <label>Tempo médio por questão (segundos)</label>
+            <input type="number" id="revisaoTempo" min="0" step="0.1" value="60">
           </div>
           <div class="form-group">
             <label>Dificuldade Percebida</label>
@@ -559,14 +572,10 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Tempo Gasto (segundos)</label>
-            <input type="number" id="revisaoTempo" min="0" step="0.1" value="60">
-          </div>
-          <div class="form-group">
             <label>Observações</label>
             <textarea id="revisaoObs" placeholder="Anotações sobre a revisão..."></textarea>
           </div>
-          <button type="button" class="btn btn-success" onclick="salvarRevisao()">Registrar Desfecho</button>
+          <button type="button" class="btn btn-success" onclick="salvarRevisao()">Salvar revisão</button>
         </form>
       </div>
     </div>
@@ -996,7 +1005,7 @@
         setLoading(false);
         toast('Tempo esgotado ao gerar fila. Tente novamente.', 'warning');
         document.getElementById('filaBody').innerHTML = 
-          '<tr><td colspan="5" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
+          '<tr><td colspan="4" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
       }, 15000);
       
       google.script.run
@@ -1015,16 +1024,16 @@
             }
           } else {
             toast('Erro: ' + (result ? result.error : 'Sem resposta'), 'error');
-            document.getElementById('filaBody').innerHTML = 
-              '<tr><td colspan="5" class="empty-state">Erro ao gerar fila.</td></tr>';
+            document.getElementById('filaBody').innerHTML =
+              '<tr><td colspan="4" class="empty-state">Erro ao gerar fila.</td></tr>';
           }
         })
         .withFailureHandler(function(error) {
           clearTimeout(timeoutId);
           setLoading(false);
           toast('Erro: ' + error.message, 'error');
-          document.getElementById('filaBody').innerHTML = 
-            '<tr><td colspan="5" class="empty-state">Erro de conexão.</td></tr>';
+          document.getElementById('filaBody').innerHTML =
+            '<tr><td colspan="4" class="empty-state">Erro de conexão.</td></tr>';
         })
         .apiMakeReviewToday();
     }
@@ -1034,69 +1043,98 @@
       tbody.innerHTML = '';
 
       if (queue.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma revisão pendente hoje</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Nenhuma revisão pendente hoje</td></tr>';
         return;
       }
 
-      queue.forEach((item, idx) => {
+      queue.forEach(item => {
         const row = document.createElement('tr');
         const proxRevisao = new Date(item.proximaRevisao);
         const dateStr = proxRevisao.toLocaleDateString('pt-BR');
-        
+
         row.innerHTML = `
           <td>${item.alvo}</td>
-          <td>${item.prioridade.toFixed(3)}</td>
+          <td>${(Number(item.prioridade) || 0).toFixed(3)}</td>
           <td>${dateStr}</td>
-          <td>${item.estabilidade.toFixed(1)}</td>
-          <td>
-            <button class="btn btn-success btn-small" onclick="marcarFeito('${item.alvo}')">✓ Feito</button>
-          </td>
+          <td>${(Number(item.estabilidade) || 0).toFixed(1)}</td>
         `;
+
+        row.addEventListener('click', function() {
+          document.getElementById('revisaoAlvo').value = item.alvo;
+          if (item.alvo.includes('::')) {
+            const [area, subarea] = item.alvo.split('::');
+            document.getElementById('revisaoArea').value = area || '';
+            document.getElementById('revisaoSubarea').value = subarea || '';
+          }
+        });
+
         tbody.appendChild(row);
       });
     }
 
-    function marcarFeito(alvo) {
-      setLoading(true);
-      google.script.run
-        .withSuccessHandler(function(result) {
-          if (result.ok) {
-            toast('Marcado como feito!', 'success');
-            document.getElementById('revisaoAlvo').value = alvo;
-            reviewQueue = reviewQueue.filter(r => r.alvo !== alvo);
-            renderFilaRevisoes(reviewQueue);
-          } else {
-            toast('Erro: ' + result.error, 'error');
-          }
-          setLoading(false);
-        })
-        .withFailureHandler(function(error) {
-          handleError(error);
-          setLoading(false);
-        })
-        .apiApplyReviewDone([alvo]);
-    }
-
     function salvarRevisao() {
+      const alvoInput = document.getElementById('revisaoAlvo').value.trim();
+      const area = document.getElementById('revisaoArea').value.trim();
+      const subarea = document.getElementById('revisaoSubarea').value.trim();
+      let alvoFinal = alvoInput;
+
+      if (!alvoFinal && area && subarea) {
+        alvoFinal = `${area}::${subarea}`;
+      }
+
+      if (!alvoFinal) {
+        toast('Informe o alvo completo ou área e subárea.', 'warning');
+        return;
+      }
+
+      const total = parseInt(document.getElementById('revisaoTotal').value, 10);
+      const acertos = parseInt(document.getElementById('revisaoAcertos').value, 10);
+
+      if (!total || total <= 0) {
+        toast('Total de questões deve ser maior que zero.', 'warning');
+        return;
+      }
+      if (isNaN(acertos) || acertos < 0) {
+        toast('Informe um número válido de acertos.', 'warning');
+        return;
+      }
+      if (acertos > total) {
+        toast('Acertos não pode ser maior que o total.', 'warning');
+        return;
+      }
+
+      let difPercebida = parseInt(document.getElementById('revisaoDif').value, 10);
+      if (isNaN(difPercebida)) difPercebida = 3;
+      if (difPercebida < 1 || difPercebida > 5) {
+        toast('Dificuldade percebida deve estar entre 1 e 5.', 'warning');
+        return;
+      }
+
+      const tempoSegValue = parseFloat(document.getElementById('revisaoTempo').value);
+      const tempoSeg = !isNaN(tempoSegValue) && tempoSegValue >= 0 ? tempoSegValue : 0;
+      const tDiasValue = parseFloat(document.getElementById('revisaoTDias').value);
+
       const payload = {
-        alvo: document.getElementById('revisaoAlvo').value.trim(),
-        tDias: parseFloat(document.getElementById('revisaoTDias').value),
-        acertou: parseInt(document.getElementById('revisaoAcertou').value) === 1,
-        difPercebida: parseInt(document.getElementById('revisaoDif').value),
-        tempoSeg: parseFloat(document.getElementById('revisaoTempo').value),
-        obs: document.getElementById('revisaoObs').value.trim()
+        alvo: alvoFinal,
+        area: area,
+        subarea: subarea,
+        total: total,
+        acertos: acertos,
+        tempoSeg: tempoSeg,
+        difPercebida: difPercebida,
+        obs: document.getElementById('revisaoObs').value.trim(),
+        flags: ''
       };
 
-      if (!payload.alvo) {
-        toast('Preencha o alvo (Área::Subárea)', 'warning');
-        return;
+      if (!isNaN(tDiasValue) && tDiasValue >= 0) {
+        payload.tDias = tDiasValue;
       }
 
       setLoading(true);
       google.script.run
         .withSuccessHandler(function(result) {
           if (result.ok) {
-            toast('Desfecho registrado com sucesso!', 'success');
+            toast('Revisão registrada!', 'success');
             limparFormRevisao();
             gerarFilaHoje();
           } else {
@@ -1113,10 +1151,13 @@
 
     function limparFormRevisao() {
       document.getElementById('revisaoAlvo').value = '';
+      document.getElementById('revisaoArea').value = '';
+      document.getElementById('revisaoSubarea').value = '';
       document.getElementById('revisaoTDias').value = '';
-      document.getElementById('revisaoAcertou').value = '1';
-      document.getElementById('revisaoDif').value = '3';
+      document.getElementById('revisaoTotal').value = '';
+      document.getElementById('revisaoAcertos').value = '';
       document.getElementById('revisaoTempo').value = '60';
+      document.getElementById('revisaoDif').value = '3';
       document.getElementById('revisaoObs').value = '';
     }
 
