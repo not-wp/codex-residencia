@@ -27,7 +27,7 @@ const HEADERS = {
   REVER_HOJE: ['alvo', 'prioridade', 'proximaRevisao', 'estabilidade', 'feito'],
   MODEL: ['alvo', 'theta0', 'theta1', 'theta2', 'S_atual', 'ultima_atualizacao', 'sigma', 'n_eff', 'weibull_k'],
   REVISAO_LOG: ['data', 'alvo', 'tDias', 'metaUsada', 'p_prev', 'acertou', 'tempoSeg', 'difPercebida', 'flags', 'obs', 'total', 'acertos'],
-  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'kappaPriToDelta', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
+  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'kappaPriToDelta', 'fatigueFactor', 'lambdaSurprise', 'coverageTarget7d', 'powerAlphaScale', 'powerBetaScale', 'powerDiversityScale', 'maintAlphaScale', 'maintBetaScale', 'maintDiversityScale', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
   EXAM_CONFIG: ['area', 'peso', 'dataProva'],
   POLICY_LOG: ['timestamp', 'alvo', 'area', 'subarea', 'pri', 'eviPerMin', 'overdue', 'diversity', 'custos', 'tempoPrev', 'decisao', 'policyVersion'],
   EFFECTS: ['alvo', 'ATE_pct', 'lo', 'hi', 'n_pairs', 'updated']
@@ -53,6 +53,15 @@ const DEFAULT_SETTINGS = {
   lambdaDiversity: 0.25,
   planGainMix: 0.5,
   kappaPriToDelta: 0.2,
+  fatigueFactor: 0.3,
+  lambdaSurprise: 0.4,
+  coverageTarget7d: 0.25,
+  powerAlphaScale: 0.9,
+  powerBetaScale: 0.8,
+  powerDiversityScale: 0.7,
+  maintAlphaScale: 1.2,
+  maintBetaScale: 1.2,
+  maintDiversityScale: 1.3,
   useAdvancedPriority: false,
   useGainLCB: true,
   useRLSKalman: true,
@@ -487,6 +496,26 @@ function apiSaveSettings(obj) {
     obj.kappaPriToDelta = parseFloat(obj.kappaPriToDelta);
     if (!isFinite(obj.kappaPriToDelta)) obj.kappaPriToDelta = DEFAULT_SETTINGS.kappaPriToDelta;
     obj.kappaPriToDelta = Math.max(0, obj.kappaPriToDelta);
+    obj.fatigueFactor = parseFloat(obj.fatigueFactor);
+    if (!isFinite(obj.fatigueFactor)) obj.fatigueFactor = DEFAULT_SETTINGS.fatigueFactor;
+    obj.fatigueFactor = clamp(obj.fatigueFactor, 0, 1);
+    obj.lambdaSurprise = parseFloat(obj.lambdaSurprise);
+    if (!isFinite(obj.lambdaSurprise) || obj.lambdaSurprise < 0) obj.lambdaSurprise = DEFAULT_SETTINGS.lambdaSurprise;
+    obj.coverageTarget7d = parseFloat(obj.coverageTarget7d);
+    if (!isFinite(obj.coverageTarget7d)) obj.coverageTarget7d = DEFAULT_SETTINGS.coverageTarget7d;
+    obj.coverageTarget7d = clamp(obj.coverageTarget7d, 0, 1);
+    obj.powerAlphaScale = parseFloat(obj.powerAlphaScale);
+    if (!isFinite(obj.powerAlphaScale) || obj.powerAlphaScale <= 0) obj.powerAlphaScale = DEFAULT_SETTINGS.powerAlphaScale;
+    obj.powerBetaScale = parseFloat(obj.powerBetaScale);
+    if (!isFinite(obj.powerBetaScale) || obj.powerBetaScale <= 0) obj.powerBetaScale = DEFAULT_SETTINGS.powerBetaScale;
+    obj.powerDiversityScale = parseFloat(obj.powerDiversityScale);
+    if (!isFinite(obj.powerDiversityScale) || obj.powerDiversityScale <= 0) obj.powerDiversityScale = DEFAULT_SETTINGS.powerDiversityScale;
+    obj.maintAlphaScale = parseFloat(obj.maintAlphaScale);
+    if (!isFinite(obj.maintAlphaScale) || obj.maintAlphaScale <= 0) obj.maintAlphaScale = DEFAULT_SETTINGS.maintAlphaScale;
+    obj.maintBetaScale = parseFloat(obj.maintBetaScale);
+    if (!isFinite(obj.maintBetaScale) || obj.maintBetaScale <= 0) obj.maintBetaScale = DEFAULT_SETTINGS.maintBetaScale;
+    obj.maintDiversityScale = parseFloat(obj.maintDiversityScale);
+    if (!isFinite(obj.maintDiversityScale) || obj.maintDiversityScale <= 0) obj.maintDiversityScale = DEFAULT_SETTINGS.maintDiversityScale;
     obj.useAdvancedPriority = asBoolean(obj.useAdvancedPriority);
     obj.useGainLCB = asBoolean(obj.useGainLCB);
     obj.useRLSKalman = asBoolean(obj.useRLSKalman);
@@ -1425,9 +1454,33 @@ function calculatePriorityForRow(spacedItem, statsRow, settings, referenceDate, 
     result = calculateClassicPriority(context, settings);
   }
 
+  let finalScore = result.score;
+  const components = Object.assign({}, result.components || {});
+  const lambdaSurpriseRaw = extras && extras.surpriseLambda !== undefined
+    ? parseFloat(extras.surpriseLambda)
+    : parseFloat(settings.lambdaSurprise);
+  const lambdaSurprise = isFinite(lambdaSurpriseRaw) ? Math.max(0, lambdaSurpriseRaw) : 0;
+  if (lambdaSurprise > 0) {
+    const residual = extras && extras.residualValue !== undefined ? extras.residualValue : null;
+    if (residual !== null && residual !== undefined && isFinite(residual) && residual < 0) {
+      const bonus = lambdaSurprise * Math.max(0, -residual);
+      if (bonus > 0) {
+        finalScore += bonus;
+        components.surprise = bonus;
+      }
+    }
+  }
+
+  if (extras && extras.coverage7d !== undefined) {
+    components.coverage7d = extras.coverage7d;
+    if (extras.meta7d !== undefined) {
+      components.coverageTarget = extras.meta7d;
+    }
+  }
+
   return {
-    score: result.score,
-    components: result.components || {},
+    score: finalScore,
+    components,
     context
   };
 }
@@ -1449,6 +1502,102 @@ function normalizeDif(difPercebida) {
 // ============================================================================
 // API: REVISÕES - CRIAR FILA DO DIA
 // ============================================================================
+
+function computeSurpriseResidualMap(rows) {
+  const map = {};
+  try {
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return map;
+    }
+    const byAlvo = {};
+    rows.forEach(entry => {
+      if (!entry || !entry.alvo) return;
+      const alvo = entry.alvo.toString();
+      const dateObj = parseSheetDate(entry.data) || parseIsoDateToLocal(entry.data);
+      const timestamp = dateObj instanceof Date && !isNaN(dateObj) ? dateObj.getTime() : 0;
+      let predicted = parseFloat(entry.p_prev);
+      if (!isFinite(predicted)) {
+        const meta = parseFloat(entry.metaUsada);
+        if (isFinite(meta)) {
+          predicted = meta;
+        }
+      }
+      if (!isFinite(predicted)) {
+        predicted = 0.85;
+      }
+      predicted = clamp(predicted, 0, 1);
+      let observed = null;
+      const total = parseFloat(entry.total);
+      const acertos = parseFloat(entry.acertos);
+      if (isFinite(total) && total > 0 && isFinite(acertos)) {
+        observed = clamp(acertos / total, 0, 1);
+      } else {
+        const acertou = parseFloat(entry.acertou);
+        if (isFinite(acertou)) {
+          observed = clamp(acertou, 0, 1);
+        }
+      }
+      if (observed === null) return;
+      const residual = predicted - observed;
+      if (!byAlvo[alvo]) {
+        byAlvo[alvo] = [];
+      }
+      byAlvo[alvo].push({ residual, timestamp });
+    });
+
+    const windowSize = 5;
+    Object.keys(byAlvo).forEach(alvo => {
+      const samples = byAlvo[alvo];
+      samples.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      const slice = samples.slice(0, windowSize);
+      if (slice.length === 0) return;
+      const avg = slice.reduce((sum, item) => sum + (item.residual || 0), 0) / slice.length;
+      map[alvo] = avg;
+    });
+  } catch (err) {
+    Logger.log('computeSurpriseResidualMap error: ' + err);
+  }
+  return map;
+}
+
+function computeCoverage7d(logData, referenceDate, settings) {
+  const result = {
+    fractions: {},
+    total: 0,
+    meta: clamp(parseFloat(settings.coverageTarget7d) || DEFAULT_SETTINGS.coverageTarget7d, 0, 1)
+  };
+  try {
+    if (!Array.isArray(logData) || logData.length === 0) {
+      return result;
+    }
+    const today = new Date(referenceDate || new Date());
+    today.setHours(0, 0, 0, 0);
+    const cutoff = new Date(today.getTime() - 6 * 24 * 60 * 60 * 1000);
+    const areaCounts = {};
+    let total = 0;
+    logData.forEach(row => {
+      if (!row || !row.area) return;
+      const data = parseSheetDate(row.data) || parseIsoDateToLocal(row.data);
+      if (!(data instanceof Date) || isNaN(data)) return;
+      data.setHours(0, 0, 0, 0);
+      if (data < cutoff || data > today) return;
+      const area = row.area.toString().trim();
+      if (!area) return;
+      total += 1;
+      areaCounts[area] = (areaCounts[area] || 0) + 1;
+    });
+    if (total <= 0) {
+      return result;
+    }
+    result.total = total;
+    Object.keys(areaCounts).forEach(area => {
+      result.fractions[area] = areaCounts[area] / total;
+    });
+  } catch (err) {
+    Logger.log('computeCoverage7d error: ' + err);
+  }
+  return result;
+}
 
 function gatherReviewCandidates(settings, referenceDate) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1472,6 +1621,8 @@ function gatherReviewCandidates(settings, referenceDate) {
   const spacedData = readSheetData(SHEET_NAMES.SPACED);
   const statsSheet = ss.getSheetByName(SHEET_NAMES.STATS);
   const statsData = statsSheet ? readSheetData(SHEET_NAMES.STATS) : [];
+  const logData = readSheetData(SHEET_NAMES.LOG);
+  const revisaoLogData = readSheetData(SHEET_NAMES.REVISAO_LOG);
   const modelData = readSheetData(SHEET_NAMES.MODEL);
   const examConfig = readSheetData(SHEET_NAMES.EXAM_CONFIG);
 
@@ -1492,6 +1643,8 @@ function gatherReviewCandidates(settings, referenceDate) {
   hoje.setHours(0, 0, 0, 0);
   const horizonDays = determineHorizonDays(hoje, examConfig);
   const useAdvanced = asBoolean(settings.useAdvancedPriority);
+  const residualMap = computeSurpriseResidualMap(revisaoLogData);
+  const coverageInfo = computeCoverage7d(logData, hoje, settings);
 
   const priorityCol = HEADERS.SPACED.indexOf('prioridade') + 1;
   const existingToday = readSheetData(SHEET_NAMES.REVER_HOJE);
@@ -1513,9 +1666,17 @@ function gatherReviewCandidates(settings, referenceDate) {
     }
 
     const statsRow = statsMap[item.alvo];
+    const alvoParts = parseAlvoParts(item.alvo || '');
+    const areaKeyRaw = (alvoParts.area || '').toString().trim() || 'Sem área';
     const extras = {
       modelRow: modelMap[item.alvo] || null,
-      horizonDays
+      horizonDays,
+      residualValue: residualMap.hasOwnProperty(item.alvo) ? residualMap[item.alvo] : null,
+      surpriseLambda: settings.lambdaSurprise,
+      coverage7d: coverageInfo.fractions && coverageInfo.fractions.hasOwnProperty(areaKeyRaw)
+        ? coverageInfo.fractions[areaKeyRaw]
+        : 0,
+      meta7d: coverageInfo.meta
     };
     const priorityInfo = calculatePriorityForRow(item, statsRow, settings, hoje, extras);
     const prioridade = priorityInfo.score || 0;
@@ -1530,7 +1691,7 @@ function gatherReviewCandidates(settings, referenceDate) {
     proxima.setHours(0, 0, 0, 0);
     const areaKey = priorityInfo.context && priorityInfo.context.area
       ? priorityInfo.context.area
-      : parseAlvoParts(item.alvo).area || 'Sem área';
+      : areaKeyRaw;
     if (proxima <= hoje) {
       reviewList.push({
         alvo: item.alvo,
@@ -1599,10 +1760,18 @@ function gatherReviewCandidates(settings, referenceDate) {
           ? targetShares[area]
           : (uniqueAreas.length > 0 ? 1 / uniqueAreas.length : 0);
         const atual = coverageReal[area] || 0;
-        const deficit = Math.max(0, target - atual);
+        let deficit = Math.max(0, target - atual);
+        const coverageArea = coverageInfo.fractions && coverageInfo.fractions.hasOwnProperty(area)
+          ? coverageInfo.fractions[area]
+          : 0;
+        const meta7d = coverageInfo && coverageInfo.meta !== undefined ? coverageInfo.meta : null;
+        if (meta7d !== null && isFinite(meta7d)) {
+          deficit += Math.max(0, meta7d - coverageArea);
+        }
         const boost = diversityWeight * deficit;
         item.components = item.components || {};
         item.components.diversity = boost;
+        item.components.coverage7d = coverageArea;
         item.prioridade = (item.prioridadeBase || 0) + boost;
         priorityByAlvo[item.alvo] = item.prioridade;
       });
@@ -1939,6 +2108,393 @@ function apiEffortPlanner(budgetMinutes) {
   }
 }
 
+function apiLogRetrospective(payload) {
+  let lock = null;
+  try {
+    const params = payload || {};
+    lock = LockService.getScriptLock();
+    lock.tryLock(10000);
+
+    const sheet = getOrCreateSheet(SHEET_NAMES.LOG, HEADERS.LOG);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const data = formatDateDDMMYYYY(hoje);
+    const totalMinutes = Number(params.totalMinutes) || 0;
+    const totalGain = Number(params.totalGain) || 0;
+    const executionPct = Number(params.executionPct) || 0;
+    const phrase = params.phrase ? params.phrase.toString() : '';
+    const topAreas = Array.isArray(params.topAreas) ? params.topAreas : [];
+
+    const obsParts = [];
+    if (phrase) obsParts.push(phrase);
+    obsParts.push(`Execução ${executionPct.toFixed(1)}%`);
+    obsParts.push(`Ganho +${totalGain.toFixed(1)}pp`);
+    if (topAreas.length > 0) {
+      obsParts.push(`Top: ${topAreas.join(', ')}`);
+    }
+    const obs = obsParts.join(' | ');
+
+    const row = [
+      data,
+      'RETROSPECTIVA',
+      '',
+      Math.round(totalMinutes),
+      0,
+      Math.round(totalMinutes * 60),
+      '',
+      'retrospectiva',
+      obs,
+      Utilities.getUuid()
+    ];
+
+    sheet.appendRow(row);
+    SpreadsheetApp.flush();
+    if (lock) lock.releaseLock();
+    return { ok: true };
+  } catch (e) {
+    if (lock) {
+      try { lock.releaseLock(); } catch (err) {}
+    }
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function createPlannerItem(entry, statsMap, settings, index) {
+  if (!entry || !entry.alvo) return null;
+  const context = entry.context || {};
+  const alvoParts = (context.area || context.subarea)
+    ? { area: context.area, subarea: context.subarea }
+    : parseAlvoParts(entry.alvo || '');
+  const area = (alvoParts.area || '').toString().trim();
+  const subarea = (alvoParts.subarea || '').toString().trim();
+  const statsKey = `${area}::${subarea}`;
+  const statsRow = statsKey && statsMap ? statsMap[statsKey] : null;
+
+  let tempoMedioMin = null;
+  if (statsRow && statsRow.tempo_medio !== undefined && statsRow.tempo_medio !== '') {
+    const tempoStats = parseFloat(statsRow.tempo_medio);
+    if (isFinite(tempoStats) && tempoStats > 0) {
+      tempoMedioMin = tempoStats / 60;
+    }
+  }
+  if (tempoMedioMin === null) {
+    const components = entry.components || {};
+    if (components.costMinutes !== undefined && components.costMinutes !== null) {
+      const costMin = parseFloat(components.costMinutes);
+      if (isFinite(costMin) && costMin > 0) {
+        tempoMedioMin = costMin;
+      }
+    }
+  }
+  if (tempoMedioMin === null && context && context.tempoPrevSeg !== undefined) {
+    const tempoSeg = parseFloat(context.tempoPrevSeg);
+    if (isFinite(tempoSeg) && tempoSeg > 0) {
+      tempoMedioMin = tempoSeg / 60;
+    }
+  }
+  if (tempoMedioMin === null || !isFinite(tempoMedioMin) || tempoMedioMin <= 0) {
+    tempoMedioMin = 1;
+  }
+
+  const tempoScore = Math.max(tempoMedioMin, 1);
+  const components = entry.components || {};
+  let eviTotalLCB = parseFloat(components.eviTotalLCB);
+  let eviPerMinLCB = parseFloat(components.eviPerMin);
+  if (!isFinite(eviTotalLCB) && isFinite(eviPerMinLCB)) {
+    eviTotalLCB = eviPerMinLCB * tempoMedioMin;
+  }
+  if (!isFinite(eviPerMinLCB) && isFinite(eviTotalLCB) && tempoScore > 0) {
+    eviPerMinLCB = eviTotalLCB / tempoScore;
+  }
+  let eviTotalMean = parseFloat(components.eviTotalMean);
+  let eviPerMinMean = parseFloat(components.eviPerMinMean);
+  if (!isFinite(eviPerMinMean) && isFinite(eviTotalMean) && tempoScore > 0) {
+    eviPerMinMean = eviTotalMean / tempoScore;
+  }
+  if (!isFinite(eviTotalMean) && isFinite(eviPerMinMean)) {
+    eviTotalMean = eviPerMinMean * tempoMedioMin;
+  }
+  const prioridade = Number(entry.prioridade) || 0;
+  const priPerMinClassic = tempoScore > 0 ? Math.max(prioridade, 0.01) / tempoScore : Math.max(prioridade, 0.01);
+  const atrasoDias = context && context.atrasoDias !== undefined
+    ? parseFloat(context.atrasoDias)
+    : null;
+  const estabilidade = parseFloat(entry.estabilidade);
+  const baseRecall = context && context.baseRecall !== undefined ? context.baseRecall : null;
+
+  return {
+    alvo: entry.alvo,
+    area,
+    subarea,
+    prioridade,
+    prioridadeBase: entry.prioridadeBase || prioridade,
+    S: isFinite(estabilidade) ? estabilidade : null,
+    t: atrasoDias !== null && isFinite(atrasoDias) ? atrasoDias : null,
+    tempoMedio: tempoMedioMin,
+    tempoScore,
+    eviPerMinMean: isFinite(eviPerMinMean) ? eviPerMinMean : null,
+    eviLCBPerMin: isFinite(eviPerMinLCB) ? eviPerMinLCB : null,
+    eviTotalMean: isFinite(eviTotalMean) ? eviTotalMean : null,
+    priPerMinClassic,
+    scoreAdvanced: tempoScore > 0 ? Math.max(eviPerMinLCB || 0, 0) : 0,
+    scoreClassic: Math.max(priPerMinClassic, 0),
+    baseRecall: baseRecall !== null && baseRecall !== undefined ? baseRecall : null,
+    feito: entry.feito || '',
+    sheetIndex: entry.sheetIndex !== undefined ? entry.sheetIndex : index,
+    components,
+    dueDate: entry.proximaRevisao || null,
+    context,
+    score: 0
+  };
+}
+
+function calculateGainPerMinute(item, useAdvanced, fallbackToPriority, kappaPriToDelta) {
+  const tempo = Math.max(item.tempoMedio || 1, 0.5);
+  let gainPerMin = 0;
+  if (useAdvanced && !fallbackToPriority) {
+    if (item.eviPerMinMean !== null && item.eviPerMinMean !== undefined) {
+      gainPerMin = Math.max(0, item.eviPerMinMean) * 100;
+    } else if (item.eviLCBPerMin !== null && item.eviLCBPerMin !== undefined) {
+      gainPerMin = Math.max(0, item.eviLCBPerMin) * 100;
+    }
+  }
+  if (!isFinite(gainPerMin) || gainPerMin <= 0) {
+    const priPerMin = Math.max(item.priPerMinClassic || 0, 0);
+    gainPerMin = Math.max(0, kappaPriToDelta * priPerMin * 100);
+  }
+  if (!isFinite(gainPerMin) || gainPerMin < 0) {
+    gainPerMin = 0;
+  }
+  return gainPerMin;
+}
+
+function applyStreakAndFatigueOrdering(targets, settings) {
+  const fatigueRaw = settings && settings.fatigueFactor !== undefined
+    ? parseFloat(settings.fatigueFactor)
+    : DEFAULT_SETTINGS.fatigueFactor;
+  const fatigue = clamp(isFinite(fatigueRaw) ? fatigueRaw : DEFAULT_SETTINGS.fatigueFactor, 0, 0.9);
+  const allocated = targets.filter(item => (item.allocMin || 0) > 0);
+  const remainder = targets.filter(item => (item.allocMin || 0) <= 0);
+  const total = allocated.length;
+  if (total <= 2) {
+    return allocated.concat(remainder);
+  }
+  const pending = allocated.slice();
+  const ordered = [];
+  const lastAreas = [];
+  const normalizer = Math.max(1, total - 1);
+  while (pending.length > 0) {
+    let bestIndex = -1;
+    let bestScore = -Infinity;
+    for (let i = 0; i < pending.length; i++) {
+      const candidate = pending[i];
+      const area = candidate.area || 'Sem área';
+      const streak = lastAreas.length >= 2 && lastAreas[lastAreas.length - 1] === area && lastAreas[lastAreas.length - 2] === area;
+      if (streak) {
+        continue;
+      }
+      const position = ordered.length;
+      const fatigueFactor = 1 - fatigue * (position / normalizer);
+      const difficulty = clamp((candidate.tempoMedio || 1) / 6, 0, 1);
+      const difficultyFactor = 1 - fatigue * difficulty * (position / normalizer);
+      const baseScore = Math.max(candidate.score || 0, 0);
+      const adjusted = baseScore * fatigueFactor * difficultyFactor;
+      if (adjusted > bestScore + 1e-9) {
+        bestScore = adjusted;
+        bestIndex = i;
+      }
+    }
+    if (bestIndex === -1) {
+      bestIndex = 0;
+    }
+    const chosen = pending.splice(bestIndex, 1)[0];
+    ordered.push(chosen);
+    const area = chosen.area || 'Sem área';
+    lastAreas.push(area);
+    if (lastAreas.length > 2) {
+      lastAreas.shift();
+    }
+  }
+  return ordered.concat(remainder);
+}
+
+function applyPlanningModeAdjustments(settings, mode) {
+  if (!settings) return settings;
+  const normalized = (mode || '').toString().toLowerCase();
+  const alpha = parseFloat(settings.alpha);
+  const lambdaDiv = parseFloat(settings.lambdaDiversity);
+  const beta = parseFloat(settings.betaUncertainty);
+  if (normalized === 'power') {
+    settings.alpha = alpha * (parseFloat(settings.powerAlphaScale) || DEFAULT_SETTINGS.powerAlphaScale || 1);
+    settings.lambdaDiversity = lambdaDiv * (parseFloat(settings.powerDiversityScale) || DEFAULT_SETTINGS.powerDiversityScale || 1);
+    settings.betaUncertainty = beta * (parseFloat(settings.powerBetaScale) || DEFAULT_SETTINGS.powerBetaScale || 1);
+  } else if (normalized === 'maintenance') {
+    settings.alpha = alpha * (parseFloat(settings.maintAlphaScale) || DEFAULT_SETTINGS.maintAlphaScale || 1);
+    settings.lambdaDiversity = lambdaDiv * (parseFloat(settings.maintDiversityScale) || DEFAULT_SETTINGS.maintDiversityScale || 1);
+    settings.betaUncertainty = beta * (parseFloat(settings.maintBetaScale) || DEFAULT_SETTINGS.maintBetaScale || 1);
+  }
+  return settings;
+}
+
+function buildProportionalPlan(items, options, settings) {
+  const result = {
+    targets: [],
+    totalAlloc: 0,
+    totalDelta: 0,
+    fallback: false
+  };
+  const list = Array.isArray(items) ? items.slice() : [];
+  const budget = Math.max(0, options && options.budgetMin !== undefined ? Number(options.budgetMin) : 0);
+  const roundTo = Math.max(1, options && options.roundTo !== undefined ? Number(options.roundTo) : 5);
+  const minUnit = Math.max(roundTo, 5);
+  const useAdvanced = !!(options && options.useAdvanced);
+  const kappa = options && options.kappaPriToDelta !== undefined ? Number(options.kappaPriToDelta) : DEFAULT_SETTINGS.kappaPriToDelta;
+
+  if (list.length === 0) {
+    return result;
+  }
+
+  const limited = list.slice();
+  let fallback = false;
+
+  let totalScore = 0;
+  limited.forEach(item => {
+    const baseScore = useAdvanced ? Math.max(item.scoreAdvanced || 0, 0) : Math.max(item.scoreClassic || 0, 0);
+    item.score = baseScore;
+    totalScore += item.score;
+  });
+
+  if (useAdvanced && totalScore <= 0 && limited.length > 0) {
+    fallback = true;
+    totalScore = 0;
+    limited.forEach(item => {
+      item.score = Math.max(item.scoreClassic || 0, 0);
+      totalScore += item.score;
+    });
+  }
+
+  if (totalScore <= 0 && limited.length > 0) {
+    fallback = true;
+    totalScore = 0;
+    limited.forEach(item => {
+      item.score = Math.max(item.scoreClassic || 0.01, 0.01);
+      totalScore += item.score;
+    });
+  }
+
+  if (budget <= 0 || totalScore <= 0) {
+    result.fallback = fallback;
+    result.targets = applyStreakAndFatigueOrdering(limited.map(item => ({
+      alvo: item.alvo,
+      area: item.area,
+      subarea: item.subarea,
+      prioridade: item.prioridade,
+      S: item.S,
+      t: item.t,
+      tempoMedio: Math.round((item.tempoMedio || 0) * 100) / 100,
+      eviPerMin: useAdvanced && !fallback ? item.eviPerMinMean : null,
+      eviLCBPerMin: useAdvanced && !fallback ? item.eviLCBPerMin : null,
+      priPerMin: (!useAdvanced || fallback) ? item.priPerMinClassic : null,
+      allocMin: 0,
+      deltaRpp: 0,
+      feito: item.feito || '',
+      baseRecall: item.baseRecall,
+      score: item.score
+    })), settings || {});
+    return result;
+  }
+
+  const states = limited.map((item, index) => {
+    const share = (budget * item.score) / totalScore;
+    const down = roundTo > 0 ? Math.floor(share / roundTo) * roundTo : 0;
+    const remainder = share - down;
+    return {
+      item,
+      index,
+      share,
+      alloc: Math.max(0, down),
+      remainder
+    };
+  });
+
+  let allocated = states.reduce((sum, state) => sum + state.alloc, 0);
+  let leftover = Math.max(0, budget - allocated);
+
+  const zeroCandidates = states
+    .filter(state => state.share > 0 && state.alloc === 0)
+    .sort((a, b) => (b.share || 0) - (a.share || 0) || a.index - b.index);
+  zeroCandidates.forEach(state => {
+    if (leftover >= minUnit) {
+      state.alloc += minUnit;
+      leftover -= minUnit;
+    }
+  });
+
+  if (roundTo > 0 && states.length > 0) {
+    const remainderOrder = states.slice().sort((a, b) => {
+      const diff = (b.remainder || 0) - (a.remainder || 0);
+      if (Math.abs(diff) > 1e-9) return diff;
+      return a.index - b.index;
+    });
+    while (leftover >= roundTo) {
+      let progress = false;
+      for (let i = 0; i < remainderOrder.length && leftover >= roundTo; i++) {
+        const state = remainderOrder[i];
+        if (state.share <= 0) continue;
+        state.alloc += roundTo;
+        leftover -= roundTo;
+        progress = true;
+      }
+      if (!progress) {
+        break;
+      }
+    }
+  }
+
+  const allocationMap = new Map();
+  states.forEach(state => allocationMap.set(state.item.alvo, Math.max(0, state.alloc)));
+
+  const prepared = limited.map(item => {
+    const alloc = allocationMap.has(item.alvo) ? allocationMap.get(item.alvo) : 0;
+    const allocRounded = Math.round(alloc * 100) / 100;
+    const gainPerMin = calculateGainPerMinute(item, useAdvanced, fallback, kappa);
+    const deltaRaw = allocRounded > 0 ? gainPerMin * allocRounded : 0;
+    const delta = Math.max(0, Math.round(deltaRaw * 10) / 10);
+    const tempoOut = Math.round((item.tempoMedio || 0) * 100) / 100;
+    return {
+      alvo: item.alvo,
+      area: item.area,
+      subarea: item.subarea,
+      prioridade: item.prioridade,
+      S: item.S,
+      t: item.t,
+      tempoMedio: tempoOut,
+      eviPerMin: useAdvanced && !fallback ? item.eviPerMinMean : null,
+      eviLCBPerMin: useAdvanced && !fallback ? item.eviLCBPerMin : null,
+      priPerMin: (!useAdvanced || fallback) ? item.priPerMinClassic : null,
+      allocMin: allocRounded,
+      deltaRpp: delta,
+      feito: item.feito || '',
+      baseRecall: item.baseRecall,
+      score: item.score
+    };
+  });
+
+  const orderedTargets = applyStreakAndFatigueOrdering(prepared, settings || {});
+  let totalAlloc = 0;
+  let totalDelta = 0;
+  orderedTargets.forEach(target => {
+    totalAlloc += target.allocMin || 0;
+    totalDelta += target.deltaRpp || 0;
+  });
+
+  result.targets = orderedTargets;
+  result.totalAlloc = Math.round(totalAlloc);
+  result.totalDelta = Math.round(totalDelta * 10) / 10;
+  result.fallback = fallback;
+  return result;
+}
+
 function apiPlanDayBudget(params) {
   try {
     const settings = apiGetSettings();
@@ -1948,7 +2504,8 @@ function apiPlanDayBudget(params) {
       return { ok: false, disabled: true };
     }
 
-    const useAdvanced = asBoolean(settings.useAdvancedPriority);
+    const planningSettings = applyPlanningModeAdjustments(Object.assign({}, settings), config.mode);
+    const useAdvanced = asBoolean(planningSettings.useAdvancedPriority);
     const budgetInput = parseFloat(config.budgetMin);
     const budgetMin = isFinite(budgetInput) && budgetInput > 0 ? budgetInput : 0;
     const roundInput = parseFloat(config.roundTo);
@@ -1958,15 +2515,15 @@ function apiPlanDayBudget(params) {
     const maxTargetsInput = parseInt(config.maxTargets, 10);
     const maxTargets = isFinite(maxTargetsInput) && maxTargetsInput > 0 ? maxTargetsInput : 12;
     const useReviewHoje = config.useReviewHoje === undefined ? true : !!config.useReviewHoje;
-    const kappaInput = settings.kappaPriToDelta !== undefined && settings.kappaPriToDelta !== ''
-      ? parseFloat(settings.kappaPriToDelta)
+    const kappaInput = planningSettings.kappaPriToDelta !== undefined && planningSettings.kappaPriToDelta !== ''
+      ? parseFloat(planningSettings.kappaPriToDelta)
       : DEFAULT_SETTINGS.kappaPriToDelta;
     const kappaPriToDelta = isFinite(kappaInput) ? kappaInput : DEFAULT_SETTINGS.kappaPriToDelta;
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
-    const gather = gatherReviewCandidates(settings, hoje);
+    const gather = gatherReviewCandidates(planningSettings, hoje);
     const reviewList = gather.reviewList || [];
     const reviewMap = {};
     reviewList.forEach((item, idx) => {
@@ -2049,138 +2606,10 @@ function apiPlanDayBudget(params) {
       if (prioridade < minPriority) {
         return;
       }
-
-      const context = entry.context || null;
-      const alvoParts = context && (context.area || context.subarea)
-        ? { area: context.area, subarea: context.subarea }
-        : parseAlvoParts(entry.alvo || '');
-      const area = (alvoParts.area || '').toString().trim();
-      const subarea = (alvoParts.subarea || '').toString().trim();
-      const statsRow = statsMap[`${area}::${subarea}`];
-
-      let tempoMedioMin = null;
-      if (statsRow && statsRow.tempo_medio !== undefined && statsRow.tempo_medio !== '') {
-        const tempoStats = parseFloat(statsRow.tempo_medio);
-        if (isFinite(tempoStats) && tempoStats > 0) {
-          tempoMedioMin = tempoStats / 60;
-        }
+      const item = createPlannerItem(entry, statsMap, planningSettings, idx);
+      if (item) {
+        items.push(item);
       }
-      if (tempoMedioMin === null) {
-        const components = entry.components || {};
-        if (components.costMinutes !== undefined && components.costMinutes !== null) {
-          const costMin = parseFloat(components.costMinutes);
-          if (isFinite(costMin) && costMin > 0) {
-            tempoMedioMin = costMin;
-          }
-        }
-      }
-      if (tempoMedioMin === null && context && context.tempoPrevSeg !== undefined) {
-        const tempoSeg = parseFloat(context.tempoPrevSeg);
-        if (isFinite(tempoSeg) && tempoSeg > 0) {
-          tempoMedioMin = tempoSeg / 60;
-        }
-      }
-      if (tempoMedioMin === null || !isFinite(tempoMedioMin) || tempoMedioMin <= 0) {
-        tempoMedioMin = 1;
-      }
-
-      const tempoScore = Math.max(tempoMedioMin, 1);
-      const components = entry.components || {};
-      let score = 0;
-      let eviPerMinMean = null;
-      let eviLCBPerMin = null;
-      let priPerMin = null;
-      let deltaRpp = 0;
-
-      if (useAdvanced) {
-        let totalLCB = parseFloat(components.eviTotalLCB);
-        if (!isFinite(totalLCB) && components.eviPerMin !== undefined) {
-          const perMinLCB = parseFloat(components.eviPerMin);
-          if (isFinite(perMinLCB)) {
-            totalLCB = perMinLCB * tempoMedioMin;
-          }
-        }
-        if (!isFinite(totalLCB)) {
-          totalLCB = 0;
-        }
-
-        let totalMean = parseFloat(components.eviTotalMean);
-        if (!isFinite(totalMean) && components.eviPerMinMean !== undefined) {
-          const perMinMeanVal = parseFloat(components.eviPerMinMean);
-          if (isFinite(perMinMeanVal)) {
-            totalMean = perMinMeanVal * tempoMedioMin;
-          }
-        }
-        if (!isFinite(totalMean)) {
-          totalMean = totalLCB;
-        }
-
-        const priSafe = Math.max(prioridade, 0.01);
-        score = Math.max(totalLCB, 0) / tempoScore;
-        const perMinMean = parseFloat(components.eviPerMinMean);
-        if (isFinite(perMinMean)) {
-          eviPerMinMean = perMinMean;
-        }
-        eviLCBPerMin = tempoScore > 0 ? Math.max(totalLCB, 0) / tempoScore : 0;
-        deltaRpp = Math.max(0, totalMean) * 100;
-        if (deltaRpp <= 0 && priSafe > 0) {
-          const fallbackBase = context && context.baseRecall !== undefined
-            ? parseFloat(context.baseRecall)
-            : prioridade;
-          const safeBase = isFinite(fallbackBase) ? Math.max(0, fallbackBase) : Math.max(0, prioridade);
-          deltaRpp = Math.max(0, kappaPriToDelta * safeBase * 100);
-        }
-      } else {
-        const priSafe = Math.max(prioridade, 0.01);
-        score = priSafe / tempoScore;
-        priPerMin = priSafe / tempoScore;
-        const baseRecall = context && context.baseRecall !== undefined
-          ? parseFloat(context.baseRecall)
-          : null;
-        const recallBase = baseRecall !== null && isFinite(baseRecall)
-          ? Math.max(0, baseRecall)
-          : Math.max(0, prioridade);
-        deltaRpp = kappaPriToDelta * recallBase * 100;
-      }
-
-      const atrasoDias = context && context.atrasoDias !== undefined
-        ? parseFloat(context.atrasoDias)
-        : null;
-      const estabilidade = parseFloat(entry.estabilidade);
-
-      const stabilityForTau = isFinite(estabilidade) && estabilidade > 0
-        ? estabilidade
-        : settings.Smin;
-      const tempoBaseline = Math.max(tempoMedioMin, 0.5);
-      const tauMinutes = clamp(
-        tempoBaseline * 3 + Math.sqrt(Math.max(stabilityForTau, 1)) * 1.5,
-        roundTo > 0 ? roundTo : 5,
-        180
-      );
-
-      items.push({
-        alvo: entry.alvo,
-        area,
-        subarea,
-        prioridade,
-        S: isFinite(estabilidade) ? estabilidade : null,
-        t: atrasoDias !== null && isFinite(atrasoDias) ? atrasoDias : null,
-        tempoMedio: tempoMedioMin,
-        tempoScore,
-        score: isFinite(score) ? score : 0,
-        eviPerMin: eviPerMinMean,
-        eviLCBPerMin,
-        priPerMin: priPerMin !== null
-          ? priPerMin
-          : (tempoScore > 0 ? Math.max(prioridade, 0.01) / tempoScore : 0),
-        deltaRpp: isFinite(deltaRpp) ? Math.max(0, deltaRpp) : 0,
-        deltaMax: isFinite(deltaRpp) ? Math.max(0, deltaRpp) : 0,
-        feito: entry.feito || '',
-        baseRecall: context && context.baseRecall !== undefined ? context.baseRecall : null,
-        sheetIndex: entry.sheetIndex !== undefined ? entry.sheetIndex : idx,
-        components,
-        tau: tauMinutes
-      });
     });
 
     if (items.length === 0) {
@@ -2191,161 +2620,193 @@ function apiPlanDayBudget(params) {
         totalDeltaRpp: 0,
         targets: [],
         areas: [],
-        mode: useAdvanced ? 'advanced' : 'classic'
+        mode: useAdvanced ? 'advanced' : 'classic',
+        fallbackToPriority: false
       };
     }
-
-    let fallbackToPriority = false;
-    if (useAdvanced) {
-      const totalScore = items.reduce((sum, item) => sum + Math.max(item.score || 0, 0), 0);
-      if (totalScore <= 0) {
-        fallbackToPriority = true;
-        items.forEach(item => {
-          const priScore = Math.max(item.prioridade || 0.01, 0.01) / Math.max(item.tempoScore || 1, 1);
-          item.score = priScore;
-          item.eviPerMin = null;
-          item.eviLCBPerMin = null;
-          item.priPerMin = priScore;
-        });
-      }
-    }
-
-    items.sort((a, b) => {
-      const diff = (b.score || 0) - (a.score || 0);
-      if (Math.abs(diff) > 1e-9) return diff;
-      return (a.sheetIndex || 0) - (b.sheetIndex || 0);
-    });
 
     const limited = maxTargets > 0 && items.length > maxTargets ? items.slice(0, maxTargets) : items.slice();
-    const capacity = roundTo > 0 ? Math.min(limited.length, Math.floor(budgetMin / roundTo)) : limited.length;
-    const eligibleCount = capacity > 0 ? capacity : 0;
-    const eligible = limited.slice(0, eligibleCount);
-
-    const allocations = new Map();
-    const chunkMinutes = Math.max(roundTo > 0 ? roundTo : 5, 5);
-    const planningStates = limited.map((item, index) => {
-      const tau = isFinite(item.tau) && item.tau > 0 ? Math.max(chunkMinutes, item.tau) : chunkMinutes;
-      const deltaMax = isFinite(item.deltaMax) ? Math.max(0, item.deltaMax) : 0;
-      return { item, tau, deltaMax, alloc: 0, index };
-    });
-    const stateByAlvo = new Map();
-    planningStates.forEach(state => stateByAlvo.set(state.item.alvo, state));
-
-    let remaining = Math.max(0, budgetMin);
-    const computeIncrementalGain = (state, minutes) => {
-      if (!state || minutes <= 0) return 0;
-      if (state.deltaMax <= 0) return 0;
-      const tau = Math.max(chunkMinutes, state.tau || chunkMinutes);
-      const prev = 1 - Math.exp(-state.alloc / tau);
-      const next = 1 - Math.exp(-(state.alloc + minutes) / tau);
-      const gain = state.deltaMax * Math.max(0, next - prev);
-      return gain > 0 ? gain : 0;
-    };
-
-    if (remaining >= chunkMinutes - 1e-6) {
-      while (remaining >= chunkMinutes - 1e-6) {
-        let bestState = null;
-        let bestPerMin = 0;
-        planningStates.forEach(state => {
-          if (!state || state.item.score <= 0) return;
-          const gain = computeIncrementalGain(state, chunkMinutes);
-          const perMin = gain / chunkMinutes;
-          if (perMin > bestPerMin + 1e-9) {
-            bestPerMin = perMin;
-            bestState = state;
-          } else if (Math.abs(perMin - bestPerMin) <= 1e-9 && bestState) {
-            if (state.index < bestState.index) {
-              bestState = state;
-            }
-          }
-        });
-        if (!bestState || bestPerMin <= 0) {
-          break;
-        }
-        bestState.alloc += chunkMinutes;
-        remaining = Math.max(0, remaining - chunkMinutes);
-      }
-    }
-
-    planningStates.forEach(state => {
-      const allocRaw = state.alloc > 0 ? state.alloc : 0;
-      const allocRounded = roundTo > 0
-        ? Math.floor(allocRaw / roundTo) * roundTo
-        : Math.round(allocRaw);
-      const finalAlloc = Math.max(0, allocRounded);
-      state.alloc = finalAlloc;
-      allocations.set(state.item.alvo, finalAlloc);
-    });
-
-    const totalGainForState = state => {
-      if (!state || state.alloc <= 0 || state.deltaMax <= 0) return 0;
-      const tau = Math.max(chunkMinutes, state.tau || chunkMinutes);
-      const fraction = 1 - Math.exp(-state.alloc / tau);
-      return state.deltaMax * fraction;
-    };
-
-    const targets = limited.map(item => {
-      const state = stateByAlvo.get(item.alvo);
-      const allocRaw = state ? state.alloc : (allocations.has(item.alvo) ? allocations.get(item.alvo) : 0);
-      const allocRounded = roundTo > 0 ? Math.floor(allocRaw / roundTo) * roundTo : Math.round(allocRaw);
-      const alloc = Math.max(0, allocRounded);
-      const tempoVal = isFinite(item.tempoMedio) ? item.tempoMedio : 1;
-      const tempoMedioOut = Math.round(tempoVal * 100) / 100;
-      const gainRaw = state ? totalGainForState(state) : 0;
-      const gain = Math.round(gainRaw * 10) / 10;
-      return {
-        alvo: item.alvo,
-        area: item.area,
-        subarea: item.subarea,
-        prioridade: item.prioridade,
-        S: item.S,
-        t: item.t,
-        tempoMedio: tempoMedioOut,
-        eviPerMin: useAdvanced && !fallbackToPriority ? item.eviPerMin : null,
-        eviLCBPerMin: useAdvanced && !fallbackToPriority ? item.eviLCBPerMin : null,
-        priPerMin: !useAdvanced || fallbackToPriority ? item.priPerMin : null,
-        allocMin: alloc,
-        deltaRpp: alloc > 0 ? gain : 0,
-        feito: item.feito || '',
-        baseRecall: item.baseRecall !== undefined ? item.baseRecall : null,
-        score: item.score
-      };
-    });
+    const plan = buildProportionalPlan(limited, {
+      budgetMin,
+      roundTo,
+      useAdvanced,
+      kappaPriToDelta
+    }, planningSettings);
 
     const areaAgg = {};
-    let totalDelta = 0;
-    let totalAlloc = 0;
-    targets.forEach(target => {
+    plan.targets.forEach(target => {
       const alloc = target.allocMin || 0;
       if (alloc <= 0) return;
-      totalAlloc += alloc;
       const delta = target.deltaRpp || 0;
-      totalDelta += delta;
-      const areaKey = target.area || 'Sem área';
-      if (!areaAgg[areaKey]) {
-        areaAgg[areaKey] = { area: areaKey, allocMin: 0, deltaRpp: 0 };
+      const key = target.area || 'Sem área';
+      if (!areaAgg[key]) {
+        areaAgg[key] = { area: key, allocMin: 0, deltaRpp: 0 };
       }
-      areaAgg[areaKey].allocMin += alloc;
-      areaAgg[areaKey].deltaRpp += delta;
+      areaAgg[key].allocMin += alloc;
+      areaAgg[key].deltaRpp += delta;
     });
 
     const areas = Object.keys(areaAgg).map(key => ({
       area: key,
-      allocMin: areaAgg[key].allocMin,
+      allocMin: Math.round(areaAgg[key].allocMin),
       deltaRpp: Math.round(areaAgg[key].deltaRpp * 10) / 10
     })).sort((a, b) => (b.allocMin || 0) - (a.allocMin || 0));
 
-    totalDelta = Math.round(totalDelta * 10) / 10;
+    return {
+      ok: true,
+      mode: useAdvanced ? (plan.fallback ? 'classic' : 'advanced') : 'classic',
+      fallbackToPriority: plan.fallback,
+      budgetMin: budgetMin,
+      allocatedMin: Math.round(plan.totalAlloc),
+      totalDeltaRpp: plan.totalDelta,
+      targets: plan.targets,
+      areas
+    };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiWeeklyPlan(params) {
+  try {
+    const settings = apiGetSettings();
+    const config = params || {};
+
+    if (!asBoolean(settings.useBanditPlanner)) {
+      return { ok: false, disabled: true };
+    }
+
+    const planningSettings = applyPlanningModeAdjustments(Object.assign({}, settings), config.mode);
+    const useAdvanced = asBoolean(planningSettings.useAdvancedPriority);
+    const budgetInput = parseFloat(config.budgetPerDayMin);
+    const budgetPerDay = isFinite(budgetInput) && budgetInput > 0 ? budgetInput : 0;
+    const roundInput = parseFloat(config.roundTo);
+    const roundTo = isFinite(roundInput) && roundInput > 0 ? Math.max(1, Math.round(roundInput)) : 5;
+    const maxTargetsInput = parseInt(config.maxTargets, 10);
+    const maxTargets = isFinite(maxTargetsInput) && maxTargetsInput > 0 ? maxTargetsInput : 12;
+    const kappaInput = planningSettings.kappaPriToDelta !== undefined && planningSettings.kappaPriToDelta !== ''
+      ? parseFloat(planningSettings.kappaPriToDelta)
+      : DEFAULT_SETTINGS.kappaPriToDelta;
+    const kappaPriToDelta = isFinite(kappaInput) ? kappaInput : DEFAULT_SETTINGS.kappaPriToDelta;
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const gather = gatherReviewCandidates(planningSettings, hoje);
+    const reviewList = gather.reviewList || [];
+    const statsData = readSheetData(SHEET_NAMES.STATS);
+    const statsMap = {};
+    statsData.forEach(row => {
+      if (!row) return;
+      const key = `${row.area}::${row.subarea}`;
+      statsMap[key] = row;
+    });
+
+    const candidates = reviewList.map((entry, idx) => createPlannerItem(entry, statsMap, planningSettings, idx)).filter(Boolean);
+    if (candidates.length === 0) {
+      return {
+        ok: true,
+        mode: useAdvanced ? 'advanced' : 'classic',
+        budgetPerDay: budgetPerDay,
+        days: [],
+        carryOver: []
+      };
+    }
+
+    candidates.forEach(item => {
+      const due = item.dueDate instanceof Date ? item.dueDate : (item.dueDate ? parseSheetDate(item.dueDate) : null);
+      if (due instanceof Date && !isNaN(due)) {
+        due.setHours(0, 0, 0, 0);
+        item.dueDate = due;
+      } else {
+        item.dueDate = null;
+      }
+      item._assigned = false;
+    });
+
+    candidates.sort((a, b) => {
+      const dueA = a.dueDate instanceof Date ? a.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
+      const dueB = b.dueDate instanceof Date ? b.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
+      if (dueA !== dueB) return dueA - dueB;
+      return (b.prioridade || 0) - (a.prioridade || 0);
+    });
+
+    const days = [];
+    const msPerDay = 24 * 60 * 60 * 1000;
+    for (let offset = 0; offset < 7; offset++) {
+      const currentDate = new Date(hoje.getTime() + offset * msPerDay);
+      const available = candidates.filter(item => !item._assigned && (item.dueDate === null || item.dueDate <= currentDate));
+      let selection = available.slice();
+      if (selection.length === 0) {
+        const remaining = candidates.filter(item => !item._assigned);
+        selection = remaining.slice(0, maxTargets);
+      } else if (selection.length > maxTargets) {
+        selection = selection.slice(0, maxTargets);
+      }
+
+      const planInputs = selection.map(item => Object.assign({}, item));
+      const dayPlan = buildProportionalPlan(planInputs, {
+        budgetMin: budgetPerDay,
+        roundTo,
+        useAdvanced,
+        kappaPriToDelta
+      }, planningSettings);
+
+      dayPlan.targets.forEach(target => {
+        if (!target || !target.alvo) return;
+        if ((target.allocMin || 0) <= 0) return;
+        const original = candidates.find(item => !item._assigned && item.alvo === target.alvo);
+        if (original) {
+          original._assigned = true;
+        }
+      });
+
+      const areaAgg = {};
+      (dayPlan.targets || []).forEach(target => {
+        const alloc = target.allocMin || 0;
+        if (alloc <= 0) return;
+        const delta = target.deltaRpp || 0;
+        const key = target.area || 'Sem área';
+        if (!areaAgg[key]) {
+          areaAgg[key] = { area: key, allocMin: 0, deltaRpp: 0 };
+        }
+        areaAgg[key].allocMin += alloc;
+        areaAgg[key].deltaRpp += delta;
+      });
+
+      const areas = Object.keys(areaAgg).map(key => ({
+        area: key,
+        allocMin: Math.round(areaAgg[key].allocMin),
+        deltaRpp: Math.round(areaAgg[key].deltaRpp * 10) / 10
+      })).sort((a, b) => (b.allocMin || 0) - (a.allocMin || 0));
+
+      days.push({
+        dateISO: currentDate.toISOString(),
+        date: formatDateDDMMYYYY(currentDate),
+        allocatedMin: Math.round(dayPlan.totalAlloc),
+        totalDeltaRpp: dayPlan.totalDelta,
+        targets: dayPlan.targets,
+        areas,
+        fallbackToPriority: dayPlan.fallback
+      });
+    }
+
+    const carryOver = candidates
+      .filter(item => !item._assigned)
+      .map(item => ({
+        alvo: item.alvo,
+        area: item.area,
+        prioridade: item.prioridade,
+        dueDate: item.dueDate instanceof Date ? formatDateDDMMYYYY(item.dueDate) : '',
+        score: useAdvanced ? item.scoreAdvanced : item.scoreClassic
+      }));
 
     return {
       ok: true,
-      mode: useAdvanced ? (fallbackToPriority ? 'classic' : 'advanced') : 'classic',
-      fallbackToPriority,
-      budgetMin: budgetMin,
-      allocatedMin: totalAlloc,
-      totalDeltaRpp: totalDelta,
-      targets,
-      areas
+      mode: useAdvanced ? 'advanced' : 'classic',
+      budgetPerDay: budgetPerDay,
+      days,
+      carryOver
     };
   } catch (e) {
     return { ok: false, error: e.toString() };

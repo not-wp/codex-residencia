@@ -670,6 +670,111 @@
       border-style: dashed;
     }
 
+    .planner-mode {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .mode-toggle {
+      display: flex;
+      gap: 8px;
+    }
+
+    .mode-toggle button {
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .mode-toggle button:hover {
+      color: var(--text-primary);
+      border-color: var(--accent);
+    }
+
+    .mode-toggle button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .retrospectiva-summary {
+      display: grid;
+      gap: 6px;
+      margin: 12px 0;
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+    }
+
+    .retrospectiva-summary strong {
+      color: var(--text-primary);
+    }
+
+    .weekly-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+      margin-bottom: 16px;
+    }
+
+    .weekly-controls label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .weekly-day {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      background: rgba(15, 23, 42, 0.45);
+    }
+
+    .weekly-day h3 {
+      margin-bottom: 8px;
+      font-size: 1.05rem;
+      color: var(--accent);
+    }
+
+    .weekly-day ul {
+      list-style: none;
+      padding-left: 0;
+      margin: 0;
+      display: grid;
+      gap: 6px;
+    }
+
+    .weekly-day li {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-secondary);
+      font-size: 0.92rem;
+    }
+
+    .weekly-day .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .weekly-day .chips span {
+      background: rgba(59, 130, 246, 0.18);
+      color: var(--text-primary);
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 0.8rem;
+    }
+
     .planner-top {
       display: flex;
       flex-wrap: wrap;
@@ -1172,6 +1277,7 @@
           <button class="tab active" onclick="switchPage('dashboard')">Dashboard</button>
           <button class="tab" onclick="switchPage('lancar')">Lançar Bloco</button>
           <button class="tab" onclick="switchPage('revisoes')">Revisões</button>
+          <button class="tab" onclick="switchPage('planejamentoSemanal')">Planejamento Semanal</button>
           <button class="tab" onclick="switchPage('ajustes')">Ajustes</button>
         </div>
       </div>
@@ -1314,6 +1420,13 @@
             <div id="plannerTotalBadge" class="planner-total">Total: —</div>
           </div>
           <div id="plannerChips" class="planner-chips"></div>
+          <div class="planner-mode">
+            <span style="font-size:0.9rem; color:var(--text-secondary);">Modo de sessão:</span>
+            <div class="mode-toggle">
+              <button type="button" id="modePowerBtn" data-mode="power">Power</button>
+              <button type="button" id="modeMaintenanceBtn" data-mode="maintenance">Maintenance</button>
+            </div>
+          </div>
           <p id="plannerHelper" class="helper-text">Informe seu orçamento em minutos para distribuir o tempo proporcionalmente ao ganho esperado.</p>
         </div>
         <div style="overflow-x: auto;">
@@ -1335,6 +1448,18 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div class="card" id="retrospectivaCard">
+        <h2>Retrospectiva do Dia</h2>
+        <p class="helper-text">Revise o que foi concluído e registre o ganho estimado ao encerrar o dia.</p>
+        <div id="retrospectivaResumo" class="retrospectiva-summary">
+          <div><strong>Total estudado:</strong> — min</div>
+          <div><strong>Ganho estimado:</strong> —</div>
+          <div><strong>Execução:</strong> —</div>
+          <div><strong>Top áreas:</strong> —</div>
+        </div>
+        <button type="button" class="btn btn-secondary" onclick="encerrarDia()">✅ Encerrar Dia</button>
       </div>
 
       <div class="card">
@@ -1380,6 +1505,23 @@
         <datalist id="alvoSuggestions"></datalist>
         <datalist id="areaSuggestions"></datalist>
         <datalist id="subareaSuggestions"></datalist>
+      </div>
+    </div>
+
+    <div id="planejamentoSemanal" class="page">
+      <div class="card">
+        <h2>Planejamento Semanal</h2>
+        <p class="helper-text">Distribua seu orçamento diário para os próximos 7 dias com base na fila atual.</p>
+        <div class="weekly-controls">
+          <div>
+            <label for="weeklyBudget">Orçamento diário (min)</label>
+            <input type="number" id="weeklyBudget" min="0" step="5" value="90">
+          </div>
+          <button type="button" class="btn btn-secondary" onclick="calcularPlanoSemanal()">📅 Calcular plano semanal</button>
+        </div>
+        <div id="weeklySummary" class="planner-total">Total previsto: —</div>
+        <div id="weeklyPlanDays"></div>
+        <div id="weeklyCarryOver" class="helper-text"></div>
       </div>
     </div>
 
@@ -1610,6 +1752,42 @@
             <label>κ (Pri → ΔR%)</label>
             <input type="number" id="setKappaPriDelta" step="0.05" min="0">
           </div>
+          <div class="form-group">
+            <label>Fator de fadiga</label>
+            <input type="number" id="setFatigueFactor" step="0.01" min="0" max="1">
+          </div>
+          <div class="form-group">
+            <label>λ surpresa (bonus)</label>
+            <input type="number" id="setLambdaSurprise" step="0.01" min="0">
+          </div>
+          <div class="form-group">
+            <label>Meta cobertura 7d</label>
+            <input type="number" id="setCoverage7d" step="0.01" min="0" max="1">
+          </div>
+          <div class="form-group">
+            <label>Power α ×</label>
+            <input type="number" id="setPowerAlpha" step="0.05" min="0">
+          </div>
+          <div class="form-group">
+            <label>Power β ×</label>
+            <input type="number" id="setPowerBeta" step="0.05" min="0">
+          </div>
+          <div class="form-group">
+            <label>Power λ<sub>div</sub> ×</label>
+            <input type="number" id="setPowerDiv" step="0.05" min="0">
+          </div>
+          <div class="form-group">
+            <label>Maintenance α ×</label>
+            <input type="number" id="setMaintAlpha" step="0.05" min="0">
+          </div>
+          <div class="form-group">
+            <label>Maintenance β ×</label>
+            <input type="number" id="setMaintBeta" step="0.05" min="0">
+          </div>
+          <div class="form-group">
+            <label>Maintenance λ<sub>div</sub> ×</label>
+            <input type="number" id="setMaintDiv" step="0.05" min="0">
+          </div>
         </div>
         <div class="flag-grid">
           <label class="flag-toggle">
@@ -1678,6 +1856,9 @@
     let plannerAllocations = new Map();
     let plannerAreas = [];
     let plannerSummary = { budget: 0, allocated: 0, delta: 0, mode: 'classic' };
+    let plannerModeSelection = (localStorage.getItem('plannerMode') || 'power');
+    let weeklyPlanData = null;
+    let retrospectiveSnapshot = null;
 
     const alvoSuggestionSet = new Set();
     const areaSuggestionSet = new Set();
@@ -1735,6 +1916,7 @@
 
       if (pageId === 'dashboard') loadDashboard();
       if (pageId === 'ajustes') loadAjustes();
+      if (pageId === 'planejamentoSemanal') loadWeeklyPlan();
       // REMOVER O AUTO-LOAD DE REVISÕES
       // if (pageId === 'revisoes') gerarFilaHoje();
       if (pageId !== 'dashboard') closeDayDetails();
@@ -1860,6 +2042,8 @@
       plannerSummary = { budget: 0, allocated: 0, delta: 0, mode };
       if (clearSummary) {
         updatePlannerSummaryUI();
+        retrospectiveSnapshot = null;
+        updateRetrospectivaResumo(null);
       }
     }
 
@@ -1913,6 +2097,7 @@
           });
         }
       }
+      applyPlannerModeUI();
     }
 
     function updatePlannerControls() {
@@ -1930,10 +2115,61 @@
         button.disabled = !enabled;
       }
       updatePlannerSummaryUI();
+      applyPlannerModeUI();
     }
 
     resetPlannerState();
     updatePlannerControls();
+    initPlannerModeToggle();
+    updateRetrospectivaResumo(null);
+
+    function setPlannerMode(mode) {
+      const normalized = mode === 'maintenance' ? 'maintenance' : 'power';
+      plannerModeSelection = normalized;
+      try {
+        localStorage.setItem('plannerMode', normalized);
+      } catch (err) {}
+      applyPlannerModeUI();
+      if (plannerAllocations.size > 0 && toBool((currentSettings || {}).useBanditPlanner)) {
+        toast('Recalculando plano para o novo modo...', 'info');
+        calcularPlano();
+      }
+    }
+
+    function applyPlannerModeUI() {
+      const powerBtn = document.getElementById('modePowerBtn');
+      const maintBtn = document.getElementById('modeMaintenanceBtn');
+      if (powerBtn) {
+        powerBtn.classList.toggle('active', plannerModeSelection === 'power');
+      }
+      if (maintBtn) {
+        maintBtn.classList.toggle('active', plannerModeSelection === 'maintenance');
+      }
+      const badgeEl = document.getElementById('policyBadge');
+      if (badgeEl) {
+        const isAdvanced = plannerSummary.mode === 'advanced';
+        const policyMode = isAdvanced ? 'EVI avançado' : 'Clássico';
+        const sessionLabel = plannerModeSelection === 'maintenance' ? 'Maintenance' : 'Power';
+        badgeEl.textContent = `Modo: ${policyMode} • ${sessionLabel}`;
+        badgeEl.classList.toggle('advanced', isAdvanced);
+      }
+    }
+
+    function initPlannerModeToggle() {
+      const powerBtn = document.getElementById('modePowerBtn');
+      const maintBtn = document.getElementById('modeMaintenanceBtn');
+      if (powerBtn) {
+        powerBtn.addEventListener('click', function() {
+          setPlannerMode('power');
+        });
+      }
+      if (maintBtn) {
+        maintBtn.addEventListener('click', function() {
+          setPlannerMode('maintenance');
+        });
+      }
+      applyPlannerModeUI();
+    }
 
     // ========================================================================
     // DASHBOARD: PAINEL LATERAL DE DETALHES
@@ -2604,6 +2840,8 @@
               reviewQueue = normalized;
               resetPlannerState(false);
               plannerSummary.mode = policyMode;
+              retrospectiveSnapshot = null;
+              updateRetrospectivaResumo(null);
             }
 
             renderFilaRevisoes(reviewQueue);
@@ -2611,17 +2849,6 @@
 
             const count = result.count || 0;
             document.getElementById('kpiRevisoesHoje').textContent = count;
-
-            const badgeEl = document.getElementById('policyBadge');
-            if (badgeEl) {
-              const advanced = policyMode === 'advanced';
-              badgeEl.textContent = advanced ? 'Modo: EVI avançado' : 'Modo: clássico';
-              if (advanced) {
-                badgeEl.classList.add('advanced');
-              } else {
-                badgeEl.classList.remove('advanced');
-              }
-            }
 
             const eviInfoEl = document.getElementById('policyEvi');
             if (eviInfoEl) {
@@ -2700,7 +2927,8 @@
         useReviewHoje: true,
         minPriority: 0,
         maxTargets: Math.min(12, reviewQueue.length),
-        roundTo: 5
+        roundTo: 5,
+        mode: plannerModeSelection
       };
 
       google.script.run
@@ -2765,6 +2993,229 @@
           toast('Erro ao planejar: ' + (error && error.message ? error.message : error), 'error');
         })
         .apiPlanDayBudget(params);
+    }
+
+    function renderWeeklyPlan(data) {
+      const container = document.getElementById('weeklyPlanDays');
+      const summaryEl = document.getElementById('weeklySummary');
+      const carryEl = document.getElementById('weeklyCarryOver');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!data || data.disabled) {
+        if (summaryEl) summaryEl.textContent = 'Ative o planejador bandit nas Ajustes para usar esta aba.';
+        if (carryEl) carryEl.textContent = '';
+        return;
+      }
+
+      const days = Array.isArray(data.days) ? data.days : [];
+      let totalAlloc = 0;
+      let totalDelta = 0;
+
+      if (days.length === 0) {
+        container.innerHTML = '<p class="helper-text">Nenhum item disponível para planejar esta semana.</p>';
+      } else {
+        days.forEach(day => {
+          const dayAlloc = Number(day.allocatedMin) || 0;
+          const dayDelta = Number(day.totalDeltaRpp) || 0;
+          totalAlloc += dayAlloc;
+          totalDelta += dayDelta;
+          const box = document.createElement('div');
+          box.className = 'weekly-day';
+          const title = document.createElement('h3');
+          title.textContent = `${day.date || ''} — ${dayAlloc.toFixed(0)} min (+${dayDelta.toFixed(1)}%)`;
+          box.appendChild(title);
+
+          const list = document.createElement('ul');
+          (day.targets || []).forEach(target => {
+            const li = document.createElement('li');
+            const alloc = Number(target.allocMin) || 0;
+            const delta = Number(target.deltaRpp) || 0;
+            li.innerHTML = `<span>${target.alvo || '—'}</span><span>${alloc.toFixed(0)} min (+${delta.toFixed(1)}%)`;
+            list.appendChild(li);
+          });
+          if ((day.targets || []).length === 0) {
+            const li = document.createElement('li');
+            li.innerHTML = '<span>Sem alocações</span><span>—</span>';
+            list.appendChild(li);
+          }
+          box.appendChild(list);
+
+          const chips = document.createElement('div');
+          chips.className = 'chips';
+          (day.areas || []).forEach(area => {
+            const span = document.createElement('span');
+            const alloc = Number(area.allocMin) || 0;
+            const delta = Number(area.deltaRpp) || 0;
+            span.textContent = `${area.area || '—'}: ${alloc.toFixed(0)} min (+${delta.toFixed(1)}%)`;
+            chips.appendChild(span);
+          });
+          if (chips.childElementCount > 0) {
+            chips.classList.add('chips');
+            box.appendChild(chips);
+          }
+
+          container.appendChild(box);
+        });
+      }
+
+      if (summaryEl) {
+        summaryEl.textContent = days.length > 0
+          ? `Total previsto: ${totalAlloc.toFixed(0)} min → +${totalDelta.toFixed(1)}%`
+          : 'Total previsto: —';
+      }
+
+      if (carryEl) {
+        const carry = Array.isArray(data.carryOver) ? data.carryOver : [];
+        if (carry.length === 0) {
+          carryEl.textContent = '';
+        } else {
+          carryEl.textContent = `Pendentes após o plano: ${carry.slice(0, 5).map(item => item.alvo).join(', ')}${carry.length > 5 ? '…' : ''}`;
+        }
+      }
+    }
+
+    function calcularPlanoSemanal() {
+      const enabled = toBool((currentSettings || {}).useBanditPlanner);
+      if (!enabled) {
+        toast('Ative “Planejador bandit” nas Ajustes para usar o plano semanal.', 'info');
+        renderWeeklyPlan({ disabled: true });
+        return;
+      }
+
+      const input = document.getElementById('weeklyBudget');
+      if (!input) return;
+      const raw = (input.value || '').toString().trim().replace(',', '.');
+      const budget = parseFloat(raw);
+      if (isNaN(budget) || budget < 0) {
+        toast('Informe um orçamento diário válido.', 'warning');
+        return;
+      }
+      input.value = Math.round(Math.max(budget, 0)).toString();
+
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          setLoading(false);
+          if (!result) {
+            toast('Erro ao calcular plano semanal.', 'error');
+            return;
+          }
+          if (result.disabled) {
+            renderWeeklyPlan({ disabled: true });
+            toast('Ative “Planejador bandit” em Ajustes.', 'info');
+            return;
+          }
+          if (!result.ok) {
+            toast('Erro ao calcular: ' + (result.error || 'falha desconhecida'), 'error');
+            return;
+          }
+          weeklyPlanData = result;
+          renderWeeklyPlan(result);
+          toast('Plano semanal atualizado!', 'success');
+        })
+        .withFailureHandler(function(error) {
+          setLoading(false);
+          toast('Erro ao calcular plano semanal: ' + (error && error.message ? error.message : error), 'error');
+        })
+        .apiWeeklyPlan({
+          budgetPerDayMin: budget,
+          roundTo: 5,
+          maxTargets: Math.min(12, reviewQueue.length || 12),
+          mode: plannerModeSelection
+        });
+    }
+
+    function loadWeeklyPlan() {
+      if (!toBool((currentSettings || {}).useBanditPlanner)) {
+        renderWeeklyPlan({ disabled: true });
+        return;
+      }
+      if (weeklyPlanData) {
+        renderWeeklyPlan(weeklyPlanData);
+      } else {
+        calcularPlanoSemanal();
+      }
+    }
+
+    function updateRetrospectivaResumo(snapshot) {
+      const resumo = document.getElementById('retrospectivaResumo');
+      if (!resumo) return;
+      if (!snapshot) {
+        resumo.innerHTML = '<div><strong>Total estudado:</strong> — min</div><div><strong>Ganho estimado:</strong> —</div><div><strong>Execução:</strong> —</div><div><strong>Top áreas:</strong> —</div>';
+        return;
+      }
+      const areas = (snapshot.topAreas || []).map(item => `${item.area}: +${item.gain.toFixed(1)}%`).join(', ');
+      resumo.innerHTML = `
+        <div><strong>Total estudado:</strong> ${snapshot.totalMinutes.toFixed(0)} min</div>
+        <div><strong>Ganho estimado:</strong> +${snapshot.totalGain.toFixed(1)} pp</div>
+        <div><strong>Execução:</strong> ${snapshot.executionPct.toFixed(1)}%</div>
+        <div><strong>Top áreas:</strong> ${areas || '—'}</div>
+      `;
+    }
+
+    function encerrarDia() {
+      if (plannerAllocations.size === 0) {
+        toast('Calcule o plano diário antes de encerrar o dia.', 'info');
+        return;
+      }
+      const totalPlanned = Array.from(plannerAllocations.values()).reduce((sum, target) => sum + (Number(target.allocMin) || 0), 0);
+      if (totalPlanned <= 0) {
+        toast('Nenhum tempo planejado para hoje.', 'info');
+        return;
+      }
+      const doneSet = new Set((reviewQueue || []).filter(item => item && item.__done).map(item => item.alvo));
+      let totalDone = 0;
+      let totalGain = 0;
+      const areaMap = new Map();
+      plannerAllocations.forEach(target => {
+        if (!target) return;
+        const alloc = Number(target.allocMin) || 0;
+        const delta = Number(target.deltaRpp) || 0;
+        if (alloc > 0 && doneSet.has(target.alvo)) {
+          totalDone += alloc;
+          totalGain += delta;
+          const key = target.area || 'Sem área';
+          if (!areaMap.has(key)) {
+            areaMap.set(key, { area: key, gain: 0, minutes: 0 });
+          }
+          const bucket = areaMap.get(key);
+          bucket.gain += delta;
+          bucket.minutes += alloc;
+        }
+      });
+
+      const executionPct = totalPlanned > 0 ? (totalDone / totalPlanned) * 100 : 0;
+      const topAreas = Array.from(areaMap.values()).sort((a, b) => (b.gain || 0) - (a.gain || 0)).slice(0, 3);
+      const phrase = totalGain > 0
+        ? `Hoje você comprou +${totalGain.toFixed(1)}pp de desempenho! 🔥`
+        : 'Dia concluído! Continue constante amanhã.';
+
+      const snapshot = {
+        totalMinutes: totalDone,
+        totalGain: totalGain,
+        executionPct,
+        topAreas,
+        phrase
+      };
+
+      retrospectiveSnapshot = snapshot;
+      updateRetrospectivaResumo(snapshot);
+
+      google.script.run
+        .withSuccessHandler(function() {
+          toast('Retrospectiva registrada!', 'success');
+        })
+        .withFailureHandler(function(error) {
+          toast('Erro ao registrar retrospectiva: ' + (error && error.message ? error.message : error), 'error');
+        })
+        .apiLogRetrospective({
+          totalMinutes: snapshot.totalMinutes,
+          totalGain: snapshot.totalGain,
+          executionPct: snapshot.executionPct,
+          topAreas: topAreas.map(item => `${item.area}: +${item.gain.toFixed(1)}%`),
+          phrase
+        });
     }
 
     function normalizeQueueItem(item) {
@@ -3043,6 +3494,15 @@
       document.getElementById('setPlanGainMix').value = settings.planGainMix || 0.5;
       document.getElementById('setKappaPriDelta').value =
         settings.kappaPriToDelta !== undefined ? settings.kappaPriToDelta : 0.2;
+      document.getElementById('setFatigueFactor').value = settings.fatigueFactor !== undefined ? settings.fatigueFactor : 0.3;
+      document.getElementById('setLambdaSurprise').value = settings.lambdaSurprise !== undefined ? settings.lambdaSurprise : 0.4;
+      document.getElementById('setCoverage7d').value = settings.coverageTarget7d !== undefined ? settings.coverageTarget7d : 0.25;
+      document.getElementById('setPowerAlpha').value = settings.powerAlphaScale !== undefined ? settings.powerAlphaScale : 0.9;
+      document.getElementById('setPowerBeta').value = settings.powerBetaScale !== undefined ? settings.powerBetaScale : 0.8;
+      document.getElementById('setPowerDiv').value = settings.powerDiversityScale !== undefined ? settings.powerDiversityScale : 0.7;
+      document.getElementById('setMaintAlpha').value = settings.maintAlphaScale !== undefined ? settings.maintAlphaScale : 1.2;
+      document.getElementById('setMaintBeta').value = settings.maintBetaScale !== undefined ? settings.maintBetaScale : 1.2;
+      document.getElementById('setMaintDiv').value = settings.maintDiversityScale !== undefined ? settings.maintDiversityScale : 1.3;
       document.getElementById('setUseAdvancedPriority').checked = toBool(settings.useAdvancedPriority);
       document.getElementById('setUseGainLCB').checked = toBool(settings.useGainLCB);
       document.getElementById('setUseRLSKalman').checked = toBool(settings.useRLSKalman);
@@ -3073,6 +3533,15 @@
         lambdaDiversity: parseFloat(document.getElementById('setLambdaDiv').value),
         planGainMix: parseFloat(document.getElementById('setPlanGainMix').value),
         kappaPriToDelta: parseFloat(document.getElementById('setKappaPriDelta').value),
+        fatigueFactor: parseFloat(document.getElementById('setFatigueFactor').value),
+        lambdaSurprise: parseFloat(document.getElementById('setLambdaSurprise').value),
+        coverageTarget7d: parseFloat(document.getElementById('setCoverage7d').value),
+        powerAlphaScale: parseFloat(document.getElementById('setPowerAlpha').value),
+        powerBetaScale: parseFloat(document.getElementById('setPowerBeta').value),
+        powerDiversityScale: parseFloat(document.getElementById('setPowerDiv').value),
+        maintAlphaScale: parseFloat(document.getElementById('setMaintAlpha').value),
+        maintBetaScale: parseFloat(document.getElementById('setMaintBeta').value),
+        maintDiversityScale: parseFloat(document.getElementById('setMaintDiv').value),
         useAdvancedPriority: document.getElementById('setUseAdvancedPriority').checked,
         useGainLCB: document.getElementById('setUseGainLCB').checked,
         useRLSKalman: document.getElementById('setUseRLSKalman').checked,
