@@ -126,30 +126,16 @@
     .flow-wrapper {
       display: grid;
       gap: 36px;
-      margin-bottom: 32px;
+      margin: 0 0 32px 0;
     }
 
     .flow-step {
       position: relative;
-      padding-left: 56px;
+      padding-left: 0;
     }
 
     .flow-step::before {
-      content: '';
-      position: absolute;
-      left: 24px;
-      top: 0;
-      bottom: 0;
-      width: 2px;
-      background: linear-gradient(to bottom, rgba(59, 130, 246, 0.35), rgba(59, 130, 246, 0));
-    }
-
-    .flow-step:first-child::before {
-      top: 32px;
-    }
-
-    .flow-step:last-child::before {
-      bottom: 48px;
+      display: none;
     }
 
     .flow-step-head {
@@ -197,6 +183,23 @@
       font-size: 1.05rem;
       margin-bottom: 12px;
       color: var(--text-primary);
+    }
+
+    .page > .flow-wrapper,
+    .page > .card {
+      margin-left: 0;
+    }
+
+    .page > .flow-wrapper:first-of-type,
+    .page > .card:first-of-type {
+      margin-top: 0;
+    }
+
+    #planejamentoSemanal > .card,
+    #ajustes > .card,
+    #guiaEstudo > .flow-wrapper,
+    #revisoes > .flow-wrapper {
+      margin-left: 0;
     }
 
     .card-header-inline {
@@ -902,6 +905,69 @@
 
     .compact-table td:first-child {
       white-space: normal;
+    }
+
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .calendar-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 14px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.05);
+    }
+
+    .calendar-date {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .calendar-date span {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .calendar-count {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+      gap: 8px;
+    }
+
+    .calendar-count strong {
+      font-size: 1.3rem;
+      color: var(--accent);
+    }
+
+    .calendar-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .calendar-grid .empty-state {
+      grid-column: 1 / -1;
+      justify-self: center;
+      text-align: center;
+      padding: 32px 16px;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px dashed rgba(148, 163, 184, 0.35);
+      border-radius: 12px;
+      width: 100%;
     }
 
     th {
@@ -1843,20 +1909,12 @@
       </div>
 
       <div class="card">
-        <h2>Calendário de Revisões (Próximos 28 Dias)</h2>
-        <div style="overflow-x: auto;">
-          <table id="calendarTable">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Quantidade</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody id="calendarBody">
-              <tr><td colspan="3" class="empty-state">Carregando...</td></tr>
-            </tbody>
-          </table>
+        <div class="card-header-inline">
+          <h2>Calendário de Revisões (Próximos 28 Dias)</h2>
+          <p class="helper-text">Visualize as sessões agendadas em cartões compactos e abra os detalhes do dia com um clique.</p>
+        </div>
+        <div id="calendarGrid" class="calendar-grid">
+          <div class="empty-state">Carregando...</div>
         </div>
       </div>
 
@@ -1935,9 +1993,53 @@
     <!-- REVISÕES -->
     <div id="revisoes" class="page">
       <div class="flow-wrapper">
-        <section class="flow-step" id="flowStepPlanner">
+        <section class="flow-step" id="flowStepQueue">
           <div class="flow-step-head">
             <span class="flow-step-index">1</span>
+            <div>
+              <h2>Execute a fila</h2>
+              <p class="flow-step-subtitle">Abra cada alvo na ordem sugerida, marque o status e registre o resultado no fim de cada sessão.</p>
+            </div>
+          </div>
+          <div class="flow-step-body">
+            <div class="card" id="queueCard">
+              <div class="queue-header">
+                <div>
+                  <h3>Fila de Revisões de Hoje</h3>
+                  <div class="policy-badges">
+                    <span id="policyBadge" class="policy-badge">Modo: —</span>
+                    <span id="policyEvi" class="policy-subtext">EVI médio: —</span>
+                  </div>
+                </div>
+                <button class="btn btn-secondary" onclick="gerarFilaHoje()">🔄 Gerar Fila</button>
+              </div>
+              <p class="helper-text">Avance na sequência, use a coluna de status para marcar o que já foi estudado e registre a revisão quando terminar.</p>
+              <div style="overflow-x: auto;">
+                <table id="filaTable" class="reviews-table">
+                  <thead>
+                    <tr>
+                      <th class="col-alvo">Alvo</th>
+                      <th class="col-pri">Pri</th>
+                      <th class="col-s">S</th>
+                      <th class="col-t">t (dias)</th>
+                      <th class="col-evi" id="colEviHeader">EVI/min</th>
+                      <th class="col-alloc">Alocação</th>
+                      <th class="col-delta">ΔR (%)</th>
+                      <th class="col-status">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="filaBody">
+                    <tr><td colspan="8" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="flow-step" id="flowStepPlanner">
+          <div class="flow-step-head">
+            <span class="flow-step-index">2</span>
             <div>
               <h2>Monte o plano do dia</h2>
               <p class="flow-step-subtitle">Distribua o orçamento, escolha o modo da sessão e entenda o ganho previsto antes de começar.</p>
@@ -2024,48 +2126,47 @@
           </div>
         </section>
 
-        <section class="flow-step" id="flowStepQueue">
+        
+
+        <section class="flow-step" id="flowStepGuide">
           <div class="flow-step-head">
-            <span class="flow-step-index">2</span>
+            <span class="flow-step-index">3</span>
             <div>
-              <h2>Execute a fila</h2>
-              <p class="flow-step-subtitle">Abra cada alvo na ordem sugerida, marque o status e registre o resultado no fim de cada sessão.</p>
+              <h2>Detalhe cada conteúdo</h2>
+              <p class="flow-step-subtitle">Transforme as alocações em um roteiro completo com o Guia de Estudo.</p>
             </div>
           </div>
           <div class="flow-step-body">
-            <div class="card" id="queueCard">
-              <div class="queue-header">
-                <div>
-                  <h3>Fila de Revisões de Hoje</h3>
-                  <div class="policy-badges">
-                    <span id="policyBadge" class="policy-badge">Modo: —</span>
-                    <span id="policyEvi" class="policy-subtext">EVI médio: —</span>
-                  </div>
+            <div class="card" id="flowPlannerBridgeCard">
+              <div class="card-header-inline">
+                <h3>Resumo das alocações do dia</h3>
+                <p class="helper-text">Selecione um alvo planejado para abrir o guia D1 → D2+ com tempos e ganhos previstos.</p>
+              </div>
+              <div id="flowPlannerSummaryTotals" class="planner-total">Total planejado: —</div>
+              <div id="flowPlannerSummaryChips" class="planner-chips"></div>
+              <div class="flow-bridge-controls">
+                <div class="form-group">
+                  <label for="flowStudyGuideSelect">Escolha um alvo planejado</label>
+                  <select id="flowStudyGuideSelect">
+                    <option value="">Sem plano calculado ainda</option>
+                  </select>
                 </div>
-                <button class="btn btn-secondary" onclick="gerarFilaHoje()">🔄 Gerar Fila</button>
+                <button type="button" class="btn btn-secondary" onclick="abrirGuiaDoFluxo()">📘 Abrir Guia de Estudo</button>
               </div>
-              <p class="helper-text">Avance na sequência, use a coluna de status para marcar o que já foi estudado e registre a revisão quando terminar.</p>
-              <div style="overflow-x: auto;">
-                <table id="filaTable" class="reviews-table">
-                  <thead>
-                    <tr>
-                      <th class="col-alvo">Alvo</th>
-                      <th class="col-pri">Pri</th>
-                      <th class="col-s">S</th>
-                      <th class="col-t">t (dias)</th>
-                      <th class="col-evi" id="colEviHeader">EVI/min</th>
-                      <th class="col-alloc">Alocação</th>
-                      <th class="col-delta">ΔR (%)</th>
-                      <th class="col-status">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody id="filaBody">
-                    <tr><td colspan="8" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
-                  </tbody>
-                </table>
-              </div>
+              <p id="flowPlannerSummaryHelper" class="helper-text">Calcule o plano para liberar a lista de conteúdos com tempo sugerido.</p>
             </div>
+          </div>
+        </section>
 
+        <section class="flow-step" id="flowStepReviewLog">
+          <div class="flow-step-head">
+            <span class="flow-step-index">4</span>
+            <div>
+              <h2>Registre o que concluiu</h2>
+              <p class="flow-step-subtitle">Preencha o bloco estudado após revisar o roteiro de cada conteúdo.</p>
+            </div>
+          </div>
+          <div class="flow-step-body">
             <div class="card" id="reviewLogCard">
               <div class="card-header-inline">
                 <h3>Registrar revisão concluída</h3>
@@ -2114,39 +2215,9 @@
           </div>
         </section>
 
-        <section class="flow-step" id="flowStepGuide">
-          <div class="flow-step-head">
-            <span class="flow-step-index">3</span>
-            <div>
-              <h2>Detalhe cada conteúdo</h2>
-              <p class="flow-step-subtitle">Transforme as alocações em um roteiro completo com o Guia de Estudo.</p>
-            </div>
-          </div>
-          <div class="flow-step-body">
-            <div class="card" id="flowPlannerBridgeCard">
-              <div class="card-header-inline">
-                <h3>Resumo das alocações do dia</h3>
-                <p class="helper-text">Selecione um alvo planejado para abrir o guia D1 → D2+ com tempos e ganhos previstos.</p>
-              </div>
-              <div id="flowPlannerSummaryTotals" class="planner-total">Total planejado: —</div>
-              <div id="flowPlannerSummaryChips" class="planner-chips"></div>
-              <div class="flow-bridge-controls">
-                <div class="form-group">
-                  <label for="flowStudyGuideSelect">Escolha um alvo planejado</label>
-                  <select id="flowStudyGuideSelect">
-                    <option value="">Sem plano calculado ainda</option>
-                  </select>
-                </div>
-                <button type="button" class="btn btn-secondary" onclick="abrirGuiaDoFluxo()">📘 Abrir Guia de Estudo</button>
-              </div>
-              <p id="flowPlannerSummaryHelper" class="helper-text">Calcule o plano para liberar a lista de conteúdos com tempo sugerido.</p>
-            </div>
-          </div>
-        </section>
-
         <section class="flow-step" id="flowStepRetrospectiva">
           <div class="flow-step-head">
-            <span class="flow-step-index">4</span>
+            <span class="flow-step-index">5</span>
             <div>
               <h2>Feche o dia</h2>
               <p class="flow-step-subtitle">Revise o que foi concluído, capture o resumo e salve a retrospectiva.</p>
@@ -4263,25 +4334,44 @@
 
     function renderCalendar(data) {
       calendarCache = Array.isArray(data) ? data.slice() : [];
-      const tbody = document.getElementById('calendarBody');
-      tbody.innerHTML = '';
+      const container = document.getElementById('calendarGrid');
+      if (!container) return;
 
-      if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="empty-state">Nenhuma revisão agendada</td></tr>';
+      container.innerHTML = '';
+      if (!calendarCache.length) {
+        container.innerHTML = '<div class="empty-state">Nenhuma revisão agendada</div>';
         return;
       }
 
-      data.forEach(item => {
-        const row = document.createElement('tr');
-        const dateObj = parseAppDate(item.data);
-        const dateStr = dateObj ? dateObj.toLocaleDateString('pt-BR') : (item.data || '—');
+      calendarCache.forEach(item => {
+        if (!item) return;
+        const card = document.createElement('div');
+        card.className = 'calendar-card';
 
-        row.innerHTML = `
-          <td>${dateStr}</td>
-          <td>${item.quantidade}</td>
-          <td><button class="btn btn-secondary btn-small" onclick="verDetalhesData('${item.data}')">Ver</button></td>
+        const dateObj = parseAppDate(item.data);
+        const dateStr = dateObj
+          ? dateObj.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+          : (item.data || '—');
+        const weekday = dateObj
+          ? dateObj.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
+          : '';
+        const quantidade = Number(item.quantidade) || 0;
+
+        card.innerHTML = `
+          <div class="calendar-date">
+            <span>${weekday.toUpperCase()}</span>
+            <strong>${dateStr}</strong>
+          </div>
+          <div class="calendar-count">
+            <span>${quantidade === 1 ? 'Revisão prevista' : 'Revisões previstas'}</span>
+            <strong>${quantidade}</strong>
+          </div>
+          <div class="calendar-actions">
+            <button class="btn btn-secondary btn-small" onclick="verDetalhesData('${item.data}')">Ver detalhes</button>
+          </div>
         `;
-        tbody.appendChild(row);
+
+        container.appendChild(card);
       });
     }
 
