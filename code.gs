@@ -25,7 +25,7 @@ const HEADERS = {
   STATS: ['area', 'subarea', 'total_blocos', 'questoes', 'acertos', 'acerto_vida', 'acerto_28d', 'acerto_7d', 'tempo_medio', 'flags_28d', 'dif_media', 'ultimaData'],
   SPACED: ['alvo', 'ultimaRevisao', 'estabilidade', 'dificuldade_media', 'proximaRevisao', 'lapses', 'prioridade'],
   REVER_HOJE: ['alvo', 'prioridade', 'proximaRevisao', 'estabilidade', 'feito'],
-  MODEL: ['alvo', 'theta0', 'theta1', 'theta2', 'S_atual', 'ultima_atualizacao', 'sigma', 'n_eff'],
+  MODEL: ['alvo', 'theta0', 'theta1', 'theta2', 'S_atual', 'ultima_atualizacao', 'sigma', 'n_eff', 'weibull_k'],
   REVISAO_LOG: ['data', 'alvo', 'tDias', 'metaUsada', 'p_prev', 'acertou', 'tempoSeg', 'difPercebida', 'flags', 'obs', 'total', 'acertos'],
   SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'kappaPriToDelta', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
   EXAM_CONFIG: ['area', 'peso', 'dataProva'],
@@ -764,7 +764,8 @@ function apiProcessLogInternal() {
             S_inicial, // S_atual
             hoje,
             0.2,
-            0
+            0,
+            1
           ];
           writeSheetRow(SHEET_NAMES.MODEL, newModelRow);
         }
@@ -1358,9 +1359,18 @@ function calculateAdvancedPriority(context, settings, extras) {
   const totalStd = Math.sqrt(Math.max(0, deltaRVar));
   const totalMean = deltaRMean;
   let totalLCB = totalMean;
+  let nEffModel = 0;
 
   if (asBoolean(settings.useGainLCB)) {
-    const beta = settings.betaUncertainty || 0;
+    const betaBase = settings.betaUncertainty || 0;
+    if (extras && extras.modelRow && extras.modelRow.n_eff !== undefined) {
+      const nEffRaw = parseFloat(extras.modelRow.n_eff);
+      if (isFinite(nEffRaw) && nEffRaw >= 0) {
+        nEffModel = nEffRaw;
+      }
+    }
+    const betaScale = Math.sqrt(Math.max(1, nEffModel));
+    const beta = betaScale > 0 ? betaBase / betaScale : betaBase;
     totalLCB = totalMean - beta * totalStd;
   }
 
@@ -1396,7 +1406,8 @@ function calculateAdvancedPriority(context, settings, extras) {
       tempoPrev: context.tempoPrevSeg,
       costMinutes: tempoMin,
       deltaR: totalMean,
-      weibullK: k
+      weibullK: k,
+      nEff: nEffModel
     }
   };
 }
@@ -2137,6 +2148,16 @@ function apiPlanDayBudget(params) {
         : null;
       const estabilidade = parseFloat(entry.estabilidade);
 
+      const stabilityForTau = isFinite(estabilidade) && estabilidade > 0
+        ? estabilidade
+        : settings.Smin;
+      const tempoBaseline = Math.max(tempoMedioMin, 0.5);
+      const tauMinutes = clamp(
+        tempoBaseline * 3 + Math.sqrt(Math.max(stabilityForTau, 1)) * 1.5,
+        roundTo > 0 ? roundTo : 5,
+        180
+      );
+
       items.push({
         alvo: entry.alvo,
         area,
@@ -2153,10 +2174,12 @@ function apiPlanDayBudget(params) {
           ? priPerMin
           : (tempoScore > 0 ? Math.max(prioridade, 0.01) / tempoScore : 0),
         deltaRpp: isFinite(deltaRpp) ? Math.max(0, deltaRpp) : 0,
+        deltaMax: isFinite(deltaRpp) ? Math.max(0, deltaRpp) : 0,
         feito: entry.feito || '',
         baseRecall: context && context.baseRecall !== undefined ? context.baseRecall : null,
         sheetIndex: entry.sheetIndex !== undefined ? entry.sheetIndex : idx,
-        components
+        components,
+        tau: tauMinutes
       });
     });
 
@@ -2199,97 +2222,77 @@ function apiPlanDayBudget(params) {
     const eligible = limited.slice(0, eligibleCount);
 
     const allocations = new Map();
-    limited.forEach(item => allocations.set(item.alvo, 0));
+    const chunkMinutes = Math.max(roundTo > 0 ? roundTo : 5, 5);
+    const planningStates = limited.map((item, index) => {
+      const tau = isFinite(item.tau) && item.tau > 0 ? Math.max(chunkMinutes, item.tau) : chunkMinutes;
+      const deltaMax = isFinite(item.deltaMax) ? Math.max(0, item.deltaMax) : 0;
+      return { item, tau, deltaMax, alloc: 0, index };
+    });
+    const stateByAlvo = new Map();
+    planningStates.forEach(state => stateByAlvo.set(state.item.alvo, state));
 
-    if (eligible.length > 0 && budgetMin > 0) {
-      const scores = eligible.map(it => Math.max(it.score || 0, 0));
-      const totalScore = scores.reduce((sum, val) => sum + val, 0);
-      if (totalScore > 0) {
-        const entries = eligible.map((item, index) => {
-          const score = scores[index];
-          const raw = budgetMin * score / totalScore;
-          let base = Math.floor(raw / roundTo) * roundTo;
-          if (!isFinite(base) || base < 0) base = 0;
-          const remainder = raw - base;
-          return {
-            item,
-            index,
-            score,
-            raw,
-            alloc: base,
-            remainder: isFinite(remainder) ? remainder : 0
-          };
-        });
+    let remaining = Math.max(0, budgetMin);
+    const computeIncrementalGain = (state, minutes) => {
+      if (!state || minutes <= 0) return 0;
+      if (state.deltaMax <= 0) return 0;
+      const tau = Math.max(chunkMinutes, state.tau || chunkMinutes);
+      const prev = 1 - Math.exp(-state.alloc / tau);
+      const next = 1 - Math.exp(-(state.alloc + minutes) / tau);
+      const gain = state.deltaMax * Math.max(0, next - prev);
+      return gain > 0 ? gain : 0;
+    };
 
-        let allocated = entries.reduce((sum, entry) => sum + entry.alloc, 0);
-        let remaining = Math.max(0, budgetMin - allocated);
-        if (remaining >= roundTo - 1e-6) {
-          const order = entries.slice().sort((a, b) => {
-            const diff = (b.remainder || 0) - (a.remainder || 0);
-            if (Math.abs(diff) > 1e-9) return diff;
-            return a.index - b.index;
-          });
-          let idx = 0;
-          while (remaining >= roundTo - 1e-6 && order.length > 0) {
-            const entry = order[idx % order.length];
-            entry.alloc += roundTo;
-            allocated += roundTo;
-            remaining = Math.max(0, budgetMin - allocated);
-            idx++;
-          }
-        }
-
-        const donorOrder = () => entries.slice().sort((a, b) => {
-          const diff = (b.alloc || 0) - (a.alloc || 0);
-          if (Math.abs(diff) > 1e-9) return diff;
-          return a.index - b.index;
-        });
-
-        entries.forEach(entry => {
-          if (entry.score <= 0 || entry.alloc >= roundTo || budgetMin < roundTo) return;
-          const donors = donorOrder();
-          for (let i = 0; i < donors.length; i++) {
-            const donor = donors[i];
-            if (donor === entry) continue;
-            if (donor.alloc > roundTo) {
-              donor.alloc -= roundTo;
-              entry.alloc += roundTo;
-              break;
+    if (remaining >= chunkMinutes - 1e-6) {
+      while (remaining >= chunkMinutes - 1e-6) {
+        let bestState = null;
+        let bestPerMin = 0;
+        planningStates.forEach(state => {
+          if (!state || state.item.score <= 0) return;
+          const gain = computeIncrementalGain(state, chunkMinutes);
+          const perMin = gain / chunkMinutes;
+          if (perMin > bestPerMin + 1e-9) {
+            bestPerMin = perMin;
+            bestState = state;
+          } else if (Math.abs(perMin - bestPerMin) <= 1e-9 && bestState) {
+            if (state.index < bestState.index) {
+              bestState = state;
             }
           }
         });
-
-        let totalAllocated = entries.reduce((sum, entry) => sum + entry.alloc, 0);
-        if (totalAllocated > budgetMin + 1e-6) {
-          const ordered = donorOrder();
-          for (let i = 0; i < ordered.length && totalAllocated > budgetMin + 1e-6; i++) {
-            const entry = ordered[i];
-            if (entry.alloc <= 0) continue;
-            const reducibleSteps = Math.min(
-              Math.floor(entry.alloc / roundTo),
-              Math.floor((totalAllocated - budgetMin) / roundTo)
-            );
-            if (reducibleSteps > 0) {
-              const amount = reducibleSteps * roundTo;
-              entry.alloc -= amount;
-              totalAllocated -= amount;
-            }
-          }
+        if (!bestState || bestPerMin <= 0) {
+          break;
         }
-
-        entries.forEach(entry => {
-          const value = Math.max(0, entry.alloc);
-          allocations.set(entry.item.alvo, value);
-        });
+        bestState.alloc += chunkMinutes;
+        remaining = Math.max(0, remaining - chunkMinutes);
       }
     }
 
+    planningStates.forEach(state => {
+      const allocRaw = state.alloc > 0 ? state.alloc : 0;
+      const allocRounded = roundTo > 0
+        ? Math.floor(allocRaw / roundTo) * roundTo
+        : Math.round(allocRaw);
+      const finalAlloc = Math.max(0, allocRounded);
+      state.alloc = finalAlloc;
+      allocations.set(state.item.alvo, finalAlloc);
+    });
+
+    const totalGainForState = state => {
+      if (!state || state.alloc <= 0 || state.deltaMax <= 0) return 0;
+      const tau = Math.max(chunkMinutes, state.tau || chunkMinutes);
+      const fraction = 1 - Math.exp(-state.alloc / tau);
+      return state.deltaMax * fraction;
+    };
+
     const targets = limited.map(item => {
-      const allocRaw = allocations.has(item.alvo) ? allocations.get(item.alvo) : 0;
-      const allocSteps = roundTo > 0 ? Math.round(allocRaw / roundTo) : Math.round(allocRaw);
-      const alloc = Math.max(0, (roundTo > 0 ? allocSteps * roundTo : allocSteps));
+      const state = stateByAlvo.get(item.alvo);
+      const allocRaw = state ? state.alloc : (allocations.has(item.alvo) ? allocations.get(item.alvo) : 0);
+      const allocRounded = roundTo > 0 ? Math.floor(allocRaw / roundTo) * roundTo : Math.round(allocRaw);
+      const alloc = Math.max(0, allocRounded);
       const tempoVal = isFinite(item.tempoMedio) ? item.tempoMedio : 1;
       const tempoMedioOut = Math.round(tempoVal * 100) / 100;
+      const gainRaw = state ? totalGainForState(state) : 0;
+      const gain = Math.round(gainRaw * 10) / 10;
       return {
         alvo: item.alvo,
         area: item.area,
@@ -2302,7 +2305,7 @@ function apiPlanDayBudget(params) {
         eviLCBPerMin: useAdvanced && !fallbackToPriority ? item.eviLCBPerMin : null,
         priPerMin: !useAdvanced || fallbackToPriority ? item.priPerMin : null,
         allocMin: alloc,
-        deltaRpp: alloc > 0 ? item.deltaRpp : 0,
+        deltaRpp: alloc > 0 ? gain : 0,
         feito: item.feito || '',
         baseRecall: item.baseRecall !== undefined ? item.baseRecall : null,
         score: item.score
@@ -2329,8 +2332,10 @@ function apiPlanDayBudget(params) {
     const areas = Object.keys(areaAgg).map(key => ({
       area: key,
       allocMin: areaAgg[key].allocMin,
-      deltaRpp: areaAgg[key].deltaRpp
+      deltaRpp: Math.round(areaAgg[key].deltaRpp * 10) / 10
     })).sort((a, b) => (b.allocMin || 0) - (a.allocMin || 0));
+
+    totalDelta = Math.round(totalDelta * 10) / 10;
 
     return {
       ok: true,
@@ -2834,7 +2839,7 @@ function apiLogReviewOutcome(payload) {
       settings,
       hojeSemHora,
       {
-        modelRow: { sigma: sigmaAtual, n_eff: nEffAtual },
+        modelRow: { sigma: sigmaAtual, n_eff: nEffAtual, weibull_k: weibullKAfter },
         horizonDays
       }
     );
@@ -2864,7 +2869,8 @@ function apiLogReviewOutcome(payload) {
       S_pred,
       hoje,
       sigmaAtual,
-      nEffAtual
+      nEffAtual,
+      weibullKAfter
     ];
 
     if (modelIdx >= 0) {
@@ -2995,6 +3001,8 @@ function apiRecompute() {
     const modelRows = Object.keys(models).map(alvo => {
       const state = models[alvo];
       const sigma = Math.sqrt(Math.max(1e-6, state.sigma2));
+      const alvoParts = parseAlvoParts(alvo);
+      const weibullK = asBoolean(settings.useWeibull) ? getWeibullShape(alvoParts.area, settings) : 1;
       return [
         alvo,
         state.theta[0],
@@ -3003,7 +3011,8 @@ function apiRecompute() {
         state.S_atual,
         new Date(),
         sigma,
-        state.nEff
+        state.nEff,
+        weibullK
       ];
     });
     if (modelRows.length > 0) {
@@ -3048,7 +3057,13 @@ function apiRecompute() {
         settings,
         new Date(),
         {
-          modelRow: { sigma: Math.sqrt(Math.max(1e-6, modelState.sigma2)), n_eff: modelState.nEff },
+          modelRow: {
+            sigma: Math.sqrt(Math.max(1e-6, modelState.sigma2)),
+            n_eff: modelState.nEff,
+            weibull_k: asBoolean(settings.useWeibull)
+              ? getWeibullShape(alvoParts.area, settings)
+              : 1
+          },
           horizonDays
         }
       );
