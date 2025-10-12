@@ -203,6 +203,40 @@
       flex-wrap: wrap;
     }
 
+    .study-guide-plan-summary {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .plan-summary-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      justify-content: space-between;
+    }
+
+    .plan-summary-header h3 {
+      margin: 0;
+      font-size: 1rem;
+      color: var(--text-primary);
+    }
+
+    .plan-summary-header .summary-helper {
+      margin: 0;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    .study-guide-plan-summary .planner-chips {
+      gap: 8px;
+    }
+
     .study-timeline {
       display: flex;
       flex-direction: column;
@@ -333,16 +367,38 @@
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     }
 
+    .study-checklist-column {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .study-checklist-column h3 {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 1rem;
+    }
+
     .study-check {
       display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 8px;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 10px;
       font-size: 0.95rem;
     }
 
     .study-check input {
       accent-color: var(--accent);
+      margin-top: 4px;
+    }
+
+    .study-check span {
+      flex: 1;
+      line-height: 1.4;
     }
 
     .study-diagnostics {
@@ -1185,6 +1241,12 @@
       box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.2);
     }
 
+    .planner-chip.selected {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.4);
+    }
+
     .planner-chip strong {
       color: #f9fafb;
     }
@@ -1923,16 +1985,8 @@
         <div class="study-guide-form">
           <div class="form-row">
             <div class="form-group">
-              <label>Área</label>
-              <input type="text" id="studyGuideArea" list="areaSuggestions" placeholder="Ex: Clínica Médica">
-            </div>
-            <div class="form-group">
-              <label>Subárea</label>
-              <input type="text" id="studyGuideSubarea" list="subareaSuggestions" placeholder="Ex: Cardiologia">
-            </div>
-            <div class="form-group">
               <label>Alvo (Área::Subárea)</label>
-              <input type="text" id="studyGuideAlvo" list="alvoSuggestions" placeholder="Combine área e subárea ou selecione da lista">
+              <input type="text" id="studyGuideAlvo" list="alvoSuggestions" placeholder="Ex: Clínica Médica::Cardiologia">
             </div>
             <div class="form-group">
               <label>Tempo disponível hoje (min)</label>
@@ -1959,6 +2013,13 @@
           <div class="study-guide-actions">
             <button type="button" class="btn btn-primary" onclick="gerarGuiaEstudo()">Gerar Guia D1 → D2+</button>
             <span id="studyGuideStatus" class="helper-text">Selecione um conteúdo para visualizar o roteiro.</span>
+          </div>
+          <div class="study-guide-plan-summary">
+            <div class="plan-summary-header">
+              <h3>Plano diário atual</h3>
+              <p class="summary-helper" id="studyGuidePlannerHelper">Execute o planner na aba Revisões para distribuir o tempo do dia.</p>
+            </div>
+            <div class="planner-chips" id="studyGuidePlannerChips"></div>
           </div>
         </div>
       </div>
@@ -2399,6 +2460,14 @@
       return Math.min(max, Math.max(min, value));
     }
 
+    function getAreaFromAlvo(alvo, fallback = '—') {
+      if (!alvo) return fallback;
+      const parts = alvo.split('::');
+      if (parts.length === 0) return alvo;
+      const area = (parts[0] || '').trim();
+      return area || fallback;
+    }
+
     // ========================================================================
     // UI UTILITIES
     // ========================================================================
@@ -2532,23 +2601,23 @@
       const stored = getStoredStudyGuide() || {};
       const prefs = stored.preferencias || {};
 
-      const areaInput = document.getElementById('studyGuideArea');
-      const subareaInput = document.getElementById('studyGuideSubarea');
       const alvoInput = document.getElementById('studyGuideAlvo');
       const tempoInput = document.getElementById('studyGuideTempo');
       const cardsRateInput = document.getElementById('studyGuideCardsRate');
       const blockTargetInput = document.getElementById('studyGuideBlockTarget');
       const readShareInput = document.getElementById('studyGuideReadShare');
 
-      if (areaInput) areaInput.value = stored.area || '';
-      if (subareaInput) subareaInput.value = stored.subarea || '';
       if (alvoInput) alvoInput.value = stored.alvo || '';
       if (tempoInput) tempoInput.value = Math.round(stored.budgetD1Min || 120);
       if (cardsRateInput) cardsRateInput.value = prefs.flashcardsPerMinBase !== undefined ? prefs.flashcardsPerMinBase : 2.0;
       if (blockTargetInput) blockTargetInput.value = prefs.blockQuestionsTarget !== undefined ? prefs.blockQuestionsTarget : 25;
-      if (readShareInput) readShareInput.value = Math.round((prefs.readShare !== undefined ? prefs.readShare : 0.35) * 100);
+      if (readShareInput) {
+        const readValue = prefs.readShare !== undefined ? prefs.readShare : 0.35;
+        readShareInput.value = Math.round(readValue * 100);
+      }
 
       resetStudyGuideUI();
+      refreshStudyGuidePlannerSummary();
     }
 
     function resetStudyGuideUI() {
@@ -2591,6 +2660,7 @@
       if (checklistHelper) {
         checklistHelper.textContent = 'Gere o guia para receber tarefas marcáveis de hoje e das revisões.';
       }
+      refreshStudyGuidePlannerSummary();
     }
 
     function loadStudyGuidePage() {
@@ -2632,7 +2702,11 @@
       const steps = [];
       if (plan.status === 'NOVO') {
         if (helperEl) {
-          helperEl.textContent = 'Conteúdos novos começam com leitura ativa, criação de cards conceituais e um bloco inicial de questões.';
+          let helperText = 'Conteúdos novos começam com leitura ativa, criação de cards conceituais e um bloco inicial de questões.';
+          if (isFinite(planToday.totalMin)) {
+            helperText += ` Tempo total sugerido hoje: ${Math.round(planToday.totalMin || 0)} min.`;
+          }
+          helperEl.textContent = helperText;
         }
         steps.push({
           title: 'D1 · Leitura ativa',
@@ -2660,6 +2734,9 @@
           stageMessage = 'Estágio S3: mantenha o conteúdo vivo com revisão leve e poucas questões de manutenção.';
         }
         if (helperEl) {
+          if (isFinite(planToday.totalMin)) {
+            stageMessage += ` Tempo total sugerido hoje: ${Math.round(planToday.totalMin || 0)} min.`;
+          }
           helperEl.textContent = stageMessage;
         }
         steps.push({
@@ -2774,8 +2851,15 @@
       if (rationaleEl) {
         const rationale = plan.rationale || {};
         const chips = [];
+        const plannerInfo = plannerAllocations instanceof Map ? plannerAllocations.get(plan.alvo) : null;
         chips.push(`<span class="chip">Modo: ${statusLabel}</span>`);
         chips.push(`<span class="chip">Etapa: ${stageLabel}</span>`);
+        if (plannerInfo) {
+          const alloc = Number(plannerInfo.allocMin) || 0;
+          const deltaPlanner = Number(plannerInfo.deltaRpp);
+          const deltaText = isFinite(deltaPlanner) ? ` (+${deltaPlanner.toFixed(1)}%)` : '';
+          chips.push(`<span class="chip" title="Tempo distribuído pelo planner diário.">Planner: ${alloc.toFixed(0)} min${deltaText}</span>`);
+        }
         if (rationale.usesBandit) {
           chips.push('<span class="chip" title="Ganho marginal por minuto calculado com EVI/LCB.">Bandit ativo</span>');
         } else {
@@ -2809,7 +2893,58 @@
         statusEl.textContent = `Guia gerado para ${plan.alvo} (${statusLabel} · ${stageLabel}).`;
       }
 
+      refreshStudyGuidePlannerSummary(plan.alvo);
       renderStudyGuideChecklist(plan, { reset: !silent });
+    }
+
+    function updateStudyGuidePlannerSummary(highlightAlvo) {
+      const chipsEl = document.getElementById('studyGuidePlannerChips');
+      const helperEl = document.getElementById('studyGuidePlannerHelper');
+      if (!chipsEl || !helperEl) return;
+
+      chipsEl.innerHTML = '';
+      const hasPlanner = plannerAllocations instanceof Map && plannerAllocations.size > 0;
+      if (!hasPlanner) {
+        helperEl.textContent = 'Use o planner diário na aba Revisões para distribuir seu tempo.';
+        const chip = document.createElement('span');
+        chip.className = 'planner-chip';
+        chip.textContent = 'Sem alocações do dia';
+        chipsEl.appendChild(chip);
+        return;
+      }
+
+      const entries = Array.from(plannerAllocations.values()).filter(Boolean);
+      entries.sort((a, b) => (Number(b.allocMin) || 0) - (Number(a.allocMin) || 0));
+
+      let totalAlloc = 0;
+      entries.forEach(item => {
+        totalAlloc += Number(item.allocMin) || 0;
+      });
+
+      entries.forEach(item => {
+        const chip = document.createElement('span');
+        chip.className = 'planner-chip';
+        if (highlightAlvo && item.alvo === highlightAlvo) {
+          chip.classList.add('selected');
+        }
+        const alloc = Number(item.allocMin) || 0;
+        const delta = Number(item.deltaRpp);
+        const areaLabel = item.area || getAreaFromAlvo(item.alvo);
+        const deltaText = isFinite(delta) ? ` (+${delta.toFixed(1)}%)` : '';
+        chip.textContent = `${areaLabel}: ${alloc.toFixed(0)} min${deltaText}`;
+        chipsEl.appendChild(chip);
+      });
+
+      if (highlightAlvo && plannerAllocations.has(highlightAlvo)) {
+        helperEl.textContent = `Tempo total planejado: ${totalAlloc.toFixed(0)} min · ${highlightAlvo} destacado.`;
+      } else {
+        helperEl.textContent = `Tempo total planejado: ${totalAlloc.toFixed(0)} min.`;
+      }
+    }
+
+    function refreshStudyGuidePlannerSummary(targetAlvo) {
+      const highlight = targetAlvo || (studyGuideState.plan && studyGuideState.plan.alvo) || null;
+      updateStudyGuidePlannerSummary(highlight);
     }
 
     function renderStudyGuideChecklist(plan, options = {}) {
@@ -2825,10 +2960,16 @@
       container.innerHTML = '';
 
       const todayColumn = document.createElement('div');
-      todayColumn.innerHTML = '<h3>D1 · Hoje</h3>';
+      todayColumn.className = 'study-checklist-column';
+      const todayTitle = document.createElement('h3');
+      todayTitle.textContent = plan.status === 'NOVO' ? 'D1 · Hoje' : 'Hoje';
+      todayColumn.appendChild(todayTitle);
 
       const futureColumn = document.createElement('div');
-      futureColumn.innerHTML = '<h3>D2+</h3>';
+      futureColumn.className = 'study-checklist-column';
+      const futureTitle = document.createElement('h3');
+      futureTitle.textContent = 'D2+';
+      futureColumn.appendChild(futureTitle);
 
       const todayItems = [];
       const planToday = plan.planToday || {};
@@ -2873,8 +3014,10 @@
         input.type = 'checkbox';
         input.checked = !!state[item.key];
         input.addEventListener('change', () => updateChecklistState(plan.alvo, item.key, input.checked));
+        const textSpan = document.createElement('span');
+        textSpan.textContent = item.label;
         label.appendChild(input);
-        label.appendChild(document.createTextNode(' ' + item.label));
+        label.appendChild(textSpan);
         column.appendChild(label);
       };
 
@@ -2899,8 +3042,6 @@
 
     function gerarGuiaEstudo() {
       initStudyGuidePage();
-      const areaInput = document.getElementById('studyGuideArea');
-      const subareaInput = document.getElementById('studyGuideSubarea');
       const alvoInput = document.getElementById('studyGuideAlvo');
       const tempoInput = document.getElementById('studyGuideTempo');
       const cardsRateInput = document.getElementById('studyGuideCardsRate');
@@ -2908,12 +3049,7 @@
       const readShareInput = document.getElementById('studyGuideReadShare');
       const statusEl = document.getElementById('studyGuideStatus');
 
-      const area = areaInput ? areaInput.value.trim() : '';
-      const subarea = subareaInput ? subareaInput.value.trim() : '';
-      let alvo = alvoInput ? alvoInput.value.trim() : '';
-      if (!alvo && area && subarea) {
-        alvo = `${area}::${subarea}`;
-      }
+      const alvo = alvoInput ? alvoInput.value.trim() : '';
       if (!alvo) {
         toast('Informe o alvo no formato Área::Subárea.', 'warning');
         return;
@@ -2949,8 +3085,6 @@
 
       persistStudyGuideState({
         alvo,
-        area,
-        subarea,
         budgetD1Min: budget,
         preferencias: prefs
       });
@@ -3373,6 +3507,7 @@
       } else {
         updateModeComparisonUI();
       }
+      refreshStudyGuidePlannerSummary();
     }
 
     function updatePlannerSummaryUI() {
@@ -4413,6 +4548,7 @@
           carryEl.textContent = `Pendentes após o plano: ${carry.slice(0, 5).map(item => item.alvo).join(', ')}${carry.length > 5 ? '…' : ''}`;
         }
       }
+      refreshStudyGuidePlannerSummary();
     }
 
     function calcularPlanoSemanal() {
