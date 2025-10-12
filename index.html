@@ -606,6 +606,31 @@
       margin-bottom: 20px;
     }
 
+    .flag-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .flag-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .flag-toggle input {
+      width: 18px;
+      height: 18px;
+    }
+
     /* Empty State */
     .empty-state {
       text-align: center;
@@ -952,6 +977,56 @@
             <label>I máximo (dias)</label>
             <input type="number" id="setImax" min="1">
           </div>
+          <div class="form-group">
+            <label>Half-life Decay (dias)</label>
+            <input type="number" id="setHalfLife" min="1">
+          </div>
+          <div class="form-group">
+            <label>Peso Outcome por Revisão</label>
+            <input type="number" id="setReviewWeight" step="0.1" min="0">
+          </div>
+          <div class="form-group">
+            <label>Beta LCB</label>
+            <input type="number" id="setBetaUnc" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Penalidade Diversidade (λ)</label>
+            <input type="number" id="setShrinkageC" step="0.1">
+          </div>
+          <div class="form-group">
+            <label>Mix Ganho Planejado</label>
+            <input type="number" id="setPlanGainMix" step="0.05" min="0" max="1">
+          </div>
+        </div>
+        <div class="flag-grid">
+          <label class="flag-toggle">
+            <input type="checkbox" id="setUseAdvancedPriority">
+            <span>Usar prioridade avançada (EVI)</span>
+          </label>
+          <label class="flag-toggle">
+            <input type="checkbox" id="setUseGainLCB">
+            <span>Ativar LCB / penalização de incerteza</span>
+          </label>
+          <label class="flag-toggle">
+            <input type="checkbox" id="setUseRLSKalman">
+            <span>Usar RLS/Kalman para estabilidade</span>
+          </label>
+          <label class="flag-toggle">
+            <input type="checkbox" id="setUseDiversityReg">
+            <span>Regularização de diversidade</span>
+          </label>
+          <label class="flag-toggle">
+            <input type="checkbox" id="setUseWeibull">
+            <span>Experimentar curva Weibull</span>
+          </label>
+          <label class="flag-toggle">
+            <input type="checkbox" id="setUseBanditPlanner">
+            <span>Planejador bandit</span>
+          </label>
+          <label class="flag-toggle">
+            <input type="checkbox" id="setUseABTesting">
+            <span>Ativar A/B testing</span>
+          </label>
         </div>
         <div style="display: flex; gap: 10px; margin-top: 20px;">
           <button class="btn btn-primary" onclick="salvarAjustes()">💾 Salvar Ajustes</button>
@@ -1011,6 +1086,10 @@
         closeDayDetails();
       }
     });
+
+    function toBool(value) {
+      return value === true || value === 'true' || value === 1 || value === '1';
+    }
 
     // ========================================================================
     // UI UTILITIES
@@ -1717,6 +1796,19 @@
         const checkBtn = statusCell ? statusCell.querySelector('button') : null;
         const victory = statusCell ? statusCell.querySelector('.victory-check') : null;
 
+        const alreadyDone = item.feito !== undefined && item.feito !== null && `${item.feito}`.trim() !== '' && `${item.feito}` !== '0';
+
+        if (alreadyDone) {
+          row.classList.add('completed');
+          if (checkBtn) {
+            checkBtn.disabled = true;
+            checkBtn.textContent = '✅ Concluído';
+          }
+          if (victory) {
+            victory.style.opacity = '1';
+          }
+        }
+
         if (checkBtn) {
           checkBtn.addEventListener('click', function(event) {
             event.stopPropagation();
@@ -1752,6 +1844,7 @@
         badge.style.opacity = '1';
       }
 
+      item.feito = 1;
       toast(`✓ ${item.alvo} marcado como estudado!`, 'success');
     }
 
@@ -1880,6 +1973,18 @@
       document.getElementById('setSmax').value = settings.Smax;
       document.getElementById('setImin').value = settings.Imin;
       document.getElementById('setImax').value = settings.Imax;
+      document.getElementById('setHalfLife').value = settings.halfLifeDecayDays || 56;
+      document.getElementById('setReviewWeight').value = settings.reviewOutcomeWeight || 3.0;
+      document.getElementById('setBetaUnc').value = settings.betaUncertainty || 0.5;
+      document.getElementById('setShrinkageC').value = settings.shrinkageC || 8.0;
+      document.getElementById('setPlanGainMix').value = settings.planGainMix || 0.5;
+      document.getElementById('setUseAdvancedPriority').checked = toBool(settings.useAdvancedPriority);
+      document.getElementById('setUseGainLCB').checked = toBool(settings.useGainLCB);
+      document.getElementById('setUseRLSKalman').checked = toBool(settings.useRLSKalman);
+      document.getElementById('setUseDiversityReg').checked = toBool(settings.useDiversityReg);
+      document.getElementById('setUseWeibull').checked = toBool(settings.useWeibull);
+      document.getElementById('setUseBanditPlanner').checked = toBool(settings.useBanditPlanner);
+      document.getElementById('setUseABTesting').checked = toBool(settings.useABTesting);
     }
 
     function salvarAjustes() {
@@ -1892,15 +1997,22 @@
         overdueMode: document.getElementById('setOverdueMode').value,
         lrEta: parseFloat(document.getElementById('setLrEta').value),
         regLambda: parseFloat(document.getElementById('setRegLambda').value),
-        halfLifeDecayDays: currentSettings.halfLifeDecayDays || 56,
-        reviewOutcomeWeight: currentSettings.reviewOutcomeWeight || 3.0,
+        halfLifeDecayDays: parseFloat(document.getElementById('setHalfLife').value),
+        reviewOutcomeWeight: parseFloat(document.getElementById('setReviewWeight').value),
         Smin: parseFloat(document.getElementById('setSmin').value),
         Smax: parseFloat(document.getElementById('setSmax').value),
         Imin: parseFloat(document.getElementById('setImin').value),
         Imax: parseFloat(document.getElementById('setImax').value),
-        betaUncertainty: currentSettings.betaUncertainty || 0.5,
-        shrinkageC: currentSettings.shrinkageC || 8.0,
-        planGainMix: currentSettings.planGainMix || 0.5
+        betaUncertainty: parseFloat(document.getElementById('setBetaUnc').value),
+        shrinkageC: parseFloat(document.getElementById('setShrinkageC').value),
+        planGainMix: parseFloat(document.getElementById('setPlanGainMix').value),
+        useAdvancedPriority: document.getElementById('setUseAdvancedPriority').checked,
+        useGainLCB: document.getElementById('setUseGainLCB').checked,
+        useRLSKalman: document.getElementById('setUseRLSKalman').checked,
+        useDiversityReg: document.getElementById('setUseDiversityReg').checked,
+        useWeibull: document.getElementById('setUseWeibull').checked,
+        useBanditPlanner: document.getElementById('setUseBanditPlanner').checked,
+        useABTesting: document.getElementById('setUseABTesting').checked
       };
 
       setLoading(true);
@@ -1908,7 +2020,7 @@
         .withSuccessHandler(function(result) {
           if (result.ok) {
             toast('Ajustes salvos com sucesso!', 'success');
-            currentSettings = settings;
+            currentSettings = Object.assign({}, settings);
           } else {
             toast('Erro ao salvar: ' + result.error, 'error');
           }

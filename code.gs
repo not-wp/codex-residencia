@@ -14,17 +14,23 @@ const SHEET_NAMES = {
   REVER_HOJE: 'REVER_HOJE',
   MODEL: 'MODEL',
   REVISAO_LOG: 'REVISAO_LOG',
-  SETTINGS: 'SETTINGS'
+  SETTINGS: 'SETTINGS',
+  EXAM_CONFIG: 'EXAM_CONFIG',
+  POLICY_LOG: 'POLICY_LOG',
+  EFFECTS: 'EFFECTS'
 };
 
 const HEADERS = {
   LOG: ['data', 'area', 'subarea', 'total', 'acertos', 'tempoMedioSeg', 'difPercebida', 'flags', 'obs', 'uid'],
   STATS: ['area', 'subarea', 'total_blocos', 'questoes', 'acertos', 'acerto_vida', 'acerto_28d', 'acerto_7d', 'tempo_medio', 'flags_28d', 'dif_media', 'ultimaData'],
   SPACED: ['alvo', 'ultimaRevisao', 'estabilidade', 'dificuldade_media', 'proximaRevisao', 'lapses', 'prioridade'],
-  REVER_HOJE: ['alvo', 'prioridade', 'proximaRevisao', 'estabilidade'],
-  MODEL: ['alvo', 'theta0', 'theta1', 'theta2', 'S_atual', 'ultima_atualizacao'],
+  REVER_HOJE: ['alvo', 'prioridade', 'proximaRevisao', 'estabilidade', 'feito'],
+  MODEL: ['alvo', 'theta0', 'theta1', 'theta2', 'S_atual', 'ultima_atualizacao', 'sigma', 'n_eff'],
   REVISAO_LOG: ['data', 'alvo', 'tDias', 'metaUsada', 'p_prev', 'acertou', 'tempoSeg', 'difPercebida', 'flags', 'obs', 'total', 'acertos'],
-  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'planGainMix']
+  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'planGainMix', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
+  EXAM_CONFIG: ['area', 'peso', 'dataProva'],
+  POLICY_LOG: ['timestamp', 'alvo', 'area', 'subarea', 'pri', 'eviPerMin', 'overdue', 'diversity', 'custos', 'tempoPrev', 'decisao', 'policyVersion'],
+  EFFECTS: ['alvo', 'ATE_pct', 'lo', 'hi', 'n_pairs', 'updated']
 };
 
 const DEFAULT_SETTINGS = {
@@ -44,7 +50,14 @@ const DEFAULT_SETTINGS = {
   Imax: 90,
   betaUncertainty: 0.50,
   shrinkageC: 8.0,
-  planGainMix: 0.5
+  planGainMix: 0.5,
+  useAdvancedPriority: false,
+  useGainLCB: true,
+  useRLSKalman: true,
+  useDiversityReg: false,
+  useWeibull: false,
+  useBanditPlanner: false,
+  useABTesting: false
 };
 
 // ============================================================================
@@ -304,20 +317,20 @@ function apiGetSettings() {
   try {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.SETTINGS);
     if (!sheet || sheet.getLastRow() <= 1) {
-      return DEFAULT_SETTINGS;
+      return Object.assign({}, DEFAULT_SETTINGS);
     }
-    
+
     const headers = sheet.getRange(1, 1, 1, HEADERS.SETTINGS.length).getValues()[0];
     const values = sheet.getRange(2, 1, 1, HEADERS.SETTINGS.length).getValues()[0];
-    
-    const settings = {};
+
+    const settings = Object.assign({}, DEFAULT_SETTINGS);
     headers.forEach((header, idx) => {
       settings[header] = values[idx];
     });
-    
+
     return settings;
   } catch (e) {
-    return DEFAULT_SETTINGS;
+    return Object.assign({}, DEFAULT_SETTINGS);
   }
 }
 
@@ -334,7 +347,22 @@ function apiSaveSettings(obj) {
     obj.Smax = Math.max(obj.Smin, parseFloat(obj.Smax));
     obj.Imin = Math.max(1, parseFloat(obj.Imin));
     obj.Imax = Math.max(obj.Imin, parseFloat(obj.Imax));
-    
+    obj.halfLifeDecayDays = Math.max(1, parseFloat(obj.halfLifeDecayDays) || DEFAULT_SETTINGS.halfLifeDecayDays);
+    obj.reviewOutcomeWeight = Math.max(0, parseFloat(obj.reviewOutcomeWeight) || DEFAULT_SETTINGS.reviewOutcomeWeight);
+    obj.betaUncertainty = parseFloat(obj.betaUncertainty);
+    if (!isFinite(obj.betaUncertainty)) obj.betaUncertainty = DEFAULT_SETTINGS.betaUncertainty;
+    obj.shrinkageC = parseFloat(obj.shrinkageC);
+    if (!isFinite(obj.shrinkageC)) obj.shrinkageC = DEFAULT_SETTINGS.shrinkageC;
+    obj.planGainMix = clamp(parseFloat(obj.planGainMix), 0, 1);
+    if (!isFinite(obj.planGainMix)) obj.planGainMix = DEFAULT_SETTINGS.planGainMix;
+    obj.useAdvancedPriority = asBoolean(obj.useAdvancedPriority);
+    obj.useGainLCB = asBoolean(obj.useGainLCB);
+    obj.useRLSKalman = asBoolean(obj.useRLSKalman);
+    obj.useDiversityReg = asBoolean(obj.useDiversityReg);
+    obj.useWeibull = asBoolean(obj.useWeibull);
+    obj.useBanditPlanner = asBoolean(obj.useBanditPlanner);
+    obj.useABTesting = asBoolean(obj.useABTesting);
+
     const values = HEADERS.SETTINGS.map(key => obj[key] !== undefined ? obj[key] : DEFAULT_SETTINGS[key]);
     
     if (sheet.getLastRow() <= 1) {
@@ -602,7 +630,9 @@ function apiProcessLogInternal() {
             0, // theta1
             0, // theta2
             S_inicial, // S_atual
-            hoje
+            hoje,
+            0.2,
+            0
           ];
           writeSheetRow(SHEET_NAMES.MODEL, newModelRow);
         }
@@ -778,6 +808,10 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function asBoolean(value) {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
 function parseAlvoParts(alvo) {
   const parts = (alvo || '').split('::');
   return {
@@ -786,14 +820,189 @@ function parseAlvoParts(alvo) {
   };
 }
 
-function calculatePriorityForRow(spacedItem, statsRow, settings, referenceDate) {
-  if (!spacedItem || !settings) return 0;
+function identityMatrix(size, scale) {
+  const matrix = [];
+  for (let i = 0; i < size; i++) {
+    const row = [];
+    for (let j = 0; j < size; j++) {
+      row.push(i === j ? scale : 0);
+    }
+    matrix.push(row);
+  }
+  return matrix;
+}
+
+function multiplyMatrixVector(matrix, vector) {
+  const result = [];
+  for (let i = 0; i < matrix.length; i++) {
+    let sum = 0;
+    for (let j = 0; j < vector.length; j++) {
+      sum += (matrix[i][j] || 0) * vector[j];
+    }
+    result.push(sum);
+  }
+  return result;
+}
+
+function outerProduct(vecA, vecB) {
+  const result = [];
+  for (let i = 0; i < vecA.length; i++) {
+    const row = [];
+    for (let j = 0; j < vecB.length; j++) {
+      row.push((vecA[i] || 0) * (vecB[j] || 0));
+    }
+    result.push(row);
+  }
+  return result;
+}
+
+function addMatrices(matA, matB) {
+  const result = [];
+  for (let i = 0; i < matA.length; i++) {
+    const row = [];
+    for (let j = 0; j < matA[i].length; j++) {
+      row.push((matA[i][j] || 0) + (matB[i][j] || 0));
+    }
+    result.push(row);
+  }
+  return result;
+}
+
+function scaleMatrix(matrix, scalar) {
+  return matrix.map(row => row.map(value => value * scalar));
+}
+
+function ensureRlsState(alvo, featureCount, settings) {
+  const props = PropertiesService.getDocumentProperties();
+  const key = `RLS_${alvo}`;
+  let state;
+  try {
+    const raw = props.getProperty(key);
+    if (raw) {
+      state = JSON.parse(raw);
+    }
+  } catch (e) {
+    state = null;
+  }
+
+  if (!state || !Array.isArray(state.P)) {
+    const scale = settings && settings.regLambda ? 1 / Math.max(settings.regLambda, 1e-3) : 10;
+    state = {
+      P: identityMatrix(featureCount, scale),
+      sigma2: 0.04,
+      nEff: 0
+    };
+  }
+
+  return state;
+}
+
+function persistRlsState(alvo, state) {
+  const props = PropertiesService.getDocumentProperties();
+  const key = `RLS_${alvo}`;
+  props.setProperty(key, JSON.stringify({
+    P: state.P,
+    sigma2: state.sigma2,
+    nEff: state.nEff
+  }));
+}
+
+function dotProduct(vecA, vecB) {
+  let sum = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    sum += (vecA[i] || 0) * (vecB[i] || 0);
+  }
+  return sum;
+}
+
+function performLearningStep(alvo, thetaVec, xVec, lnSObs, settings, options) {
+  const theta = thetaVec.slice();
+  const total = Math.max(1, options && options.total ? options.total : 1);
+  const useRls = asBoolean(settings.useRLSKalman);
+  let sigma2 = options && options.sigma2 !== undefined ? Math.max(1e-6, options.sigma2) : 0.04;
+  let nEff = options && options.nEff !== undefined ? Math.max(0, options.nEff) : 0;
+  let rlsState = options && options.state ? options.state : null;
+
+  const lnSHat = dotProduct(theta, xVec);
+  const innovation = lnSObs - lnSHat;
+
+  if (useRls) {
+    const featureCount = xVec.length;
+    rlsState = rlsState || ensureRlsState(alvo, featureCount, settings);
+    const halfLife = Math.max(1, Number(settings.halfLifeDecayDays) || 56);
+    const forgetting = clamp(Math.pow(2, -1 / halfLife), 0.01, 0.999);
+
+    const scaledP = scaleMatrix(rlsState.P, 1 / forgetting);
+    const Px = multiplyMatrixVector(scaledP, xVec);
+    const denom = 1 + dotProduct(xVec, Px);
+    const gain = Px.map(value => value / denom);
+
+    for (let i = 0; i < theta.length; i++) {
+      theta[i] = theta[i] + gain[i] * innovation;
+    }
+
+    const adjustment = outerProduct(gain, xVec);
+    const newP = [];
+    for (let i = 0; i < scaledP.length; i++) {
+      const row = [];
+      for (let j = 0; j < scaledP[i].length; j++) {
+        row.push(scaledP[i][j] - adjustment[i][j]);
+      }
+      newP.push(row);
+    }
+    rlsState.P = newP;
+
+    const gainScalar = clamp(dotProduct(xVec, gain), 0, 1);
+    sigma2 = (1 - gainScalar) * sigma2 + gainScalar * (innovation * innovation);
+    nEff = (1 - forgetting) * nEff + gainScalar;
+  } else {
+    const weightBase = settings.reviewOutcomeWeight || 1;
+    const stepWeight = clamp(weightBase * total, 1, 50);
+    const lr = settings.lrEta || 0.05;
+    const reg = settings.regLambda || 0;
+    for (let i = 0; i < theta.length; i++) {
+      theta[i] = (1 - reg) * theta[i] + lr * stepWeight * innovation * xVec[i];
+    }
+    sigma2 = (1 - reg) * sigma2 + reg * (innovation * innovation);
+    nEff = Math.min(1000, nEff + stepWeight);
+  }
+
+  const lnSPred = dotProduct(theta, xVec);
+  let S_pred = Math.exp(lnSPred);
+  S_pred = applyCapS(S_pred, settings.Smin, settings.Smax);
+
+  return {
+    theta,
+    sigma2,
+    nEff,
+    S_pred,
+    lnSPred,
+    innovation,
+    state: rlsState
+  };
+}
+
+function appendPolicyLogEntries(entries) {
+  if (!entries || entries.length === 0) {
+    return;
+  }
+  const sheet = getOrCreateSheet(SHEET_NAMES.POLICY_LOG, HEADERS.POLICY_LOG);
+  const startRow = sheet.getLastRow() + 1;
+  const values = entries.map(entry => HEADERS.POLICY_LOG.map(header => entry[header] !== undefined ? entry[header] : ''));
+  sheet.getRange(startRow, 1, values.length, HEADERS.POLICY_LOG.length).setValues(values);
+  sheet.getRange(startRow, 1, values.length, 1).setNumberFormat('dd/mm/yyyy hh:mm:ss');
+}
+
+function buildPriorityContext(spacedItem, statsRow, settings, referenceDate) {
+  if (!spacedItem || !settings) return null;
 
   const today = new Date(referenceDate || new Date());
   today.setHours(0, 0, 0, 0);
 
   const msPerDay = 1000 * 60 * 60 * 24;
   const S = Math.max(settings.Smin, parseFloat(spacedItem.estabilidade) || settings.Smin);
+
+  const alvoParts = parseAlvoParts(spacedItem.alvo || '');
 
   let ultimaRevisaoDias = 0;
   if (spacedItem.ultimaRevisao) {
@@ -808,46 +1017,198 @@ function calculatePriorityForRow(spacedItem, statsRow, settings, referenceDate) 
     }
   }
 
-  const R_t = Math.exp(-ultimaRevisaoDias / S);
-  const base = 1 - R_t;
+  const R_t = Math.exp(-ultimaRevisaoDias / Math.max(1, S));
+  const baseRecall = 1 - R_t;
 
   let peg = 0;
   let tempoRel = 0;
   let difNorm = 0;
+  let tempoPrevSeg = 60;
+  let competencia = 0.5;
 
   if (statsRow) {
-    const flags28d = parseFloat(statsRow.flags_28d) || 0;
-    peg = clamp(flags28d / 10, 0, 1);
+    const flags28d = parseFloat(statsRow.flags_28d);
+    if (!isNaN(flags28d)) {
+      peg = clamp(flags28d / 10, 0, 1);
+    }
 
-    const tempoMedio = parseFloat(statsRow.tempo_medio) || 60;
-    tempoRel = clamp(tempoMedio / 120, 0, 1);
+    const tempoMedio = parseFloat(statsRow.tempo_medio);
+    if (!isNaN(tempoMedio) && tempoMedio > 0) {
+      tempoPrevSeg = tempoMedio;
+      tempoRel = clamp(tempoMedio / 120, 0, 1);
+    } else {
+      tempoRel = clamp(tempoPrevSeg / 120, 0, 1);
+    }
 
     const difMedia = parseFloat(statsRow.dif_media);
     if (!isNaN(difMedia)) {
       difNorm = clamp((difMedia - 1) / 4, 0, 1);
+    }
+
+    const acc28 = parseFloat(statsRow.acerto_28d);
+    const accVida = parseFloat(statsRow.acerto_vida);
+    if (!isNaN(acc28) && acc28 > 0) {
+      competencia = clamp(acc28, 0, 1);
+    } else if (!isNaN(accVida) && accVida > 0) {
+      competencia = clamp(accVida, 0, 1);
     }
   } else {
     const difMedia = parseFloat(spacedItem.dificuldade_media);
     if (!isNaN(difMedia)) {
       difNorm = clamp((difMedia - 1) / 4, 0, 1);
     }
+    tempoRel = clamp(tempoPrevSeg / 120, 0, 1);
   }
 
   let atrasoDias = 0;
+  let proximaDate = null;
   if (spacedItem.proximaRevisao) {
     const proxima = parseSheetDate(spacedItem.proximaRevisao);
     if (proxima) {
+      proximaDate = proxima;
       atrasoDias = Math.max(0, Math.floor((today - proxima) / msPerDay));
     }
   }
 
-  const overdue = settings.alpha * Math.min(1.5, atrasoDias / S);
+  const overdueRaw = Math.min(1.5, atrasoDias / Math.max(1, S));
+  const overdueValue = calcOverdue(atrasoDias, Math.max(1, S), settings.alpha, settings.overdueMode);
 
-  return base +
-    settings.wPeg * peg +
-    settings.wTempo * tempoRel +
-    settings.wDif * difNorm +
-    overdue;
+  return {
+    hoje: today,
+    alvo: spacedItem.alvo || '',
+    area: alvoParts.area,
+    subarea: alvoParts.subarea,
+    S,
+    ultimaRevisaoDias,
+    baseRecall,
+    peg,
+    tempoRel,
+    tempoPrevSeg,
+    difNorm,
+    atrasoDias,
+    overdueRaw,
+    overdueValue,
+    proximaDate,
+    competencia
+  };
+}
+
+function calculateClassicPriority(context, settings) {
+  if (!context) return { score: 0, components: {} };
+  const custos =
+    settings.wPeg * context.peg +
+    settings.wTempo * context.tempoRel +
+    settings.wDif * context.difNorm;
+  const score = context.baseRecall + custos + context.overdueValue;
+  return {
+    score,
+    components: {
+      base: context.baseRecall,
+      custos,
+      overdue: context.overdueValue
+    }
+  };
+}
+
+function estimateExpectedDeltaS(modelRow, settings, context) {
+  if (!modelRow) {
+    return Math.max(0.05 * context.S, 0.1);
+  }
+  const sigma = parseFloat(modelRow.sigma);
+  const nEff = parseFloat(modelRow.n_eff);
+  const sigmaAbs = isNaN(sigma) ? 0.1 : Math.max(0.01, Math.abs(sigma));
+  const effective = isNaN(nEff) ? 1 : Math.max(0.25, nEff);
+  const weight = settings.reviewOutcomeWeight || 1;
+  const mix = settings.planGainMix || 0.5;
+  const scale = clamp(weight * mix / effective, 0.02, 1);
+  return clamp(sigmaAbs * context.S * scale, 0.05, context.S * 0.75);
+}
+
+function determineHorizonDays(referenceDate, examConfig) {
+  const today = new Date(referenceDate || new Date());
+  today.setHours(0, 0, 0, 0);
+  let horizon = 42;
+  if (Array.isArray(examConfig)) {
+    examConfig.forEach(row => {
+      if (!row || !row.dataProva) return;
+      const examDate = parseSheetDate(row.dataProva);
+      if (!examDate) return;
+      const diff = Math.floor((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (diff > 0 && (horizon === null || diff < horizon)) {
+        horizon = diff;
+      }
+    });
+  }
+  if (horizon === null || !isFinite(horizon) || horizon <= 0) {
+    horizon = 42;
+  }
+  return horizon;
+}
+
+function calculateAdvancedPriority(context, settings, extras) {
+  if (!context) {
+    return { score: 0, components: {} };
+  }
+
+  const modelRow = extras && extras.modelRow ? extras.modelRow : null;
+  const horizonDays = extras && extras.horizonDays ? Math.max(1, extras.horizonDays) : 42;
+  const expectedDeltaS = estimateExpectedDeltaS(modelRow, settings, context);
+  const S = Math.max(context.S, 1);
+  const derivative = (horizonDays / (S * S)) * Math.exp(-horizonDays / S);
+  const deltaR = derivative * expectedDeltaS;
+  const tempoMin = Math.max(context.tempoPrevSeg / 60, 0.25);
+  let eviPerMin = deltaR / tempoMin;
+
+  if (asBoolean(settings.useGainLCB)) {
+    const sigma = modelRow && modelRow.sigma !== undefined ? Math.abs(parseFloat(modelRow.sigma)) || 0 : 0;
+    const beta = settings.betaUncertainty || 0;
+    eviPerMin -= beta * sigma;
+  }
+
+  const custos =
+    settings.wPeg * context.peg +
+    settings.wTempo * context.tempoRel +
+    settings.wDif * context.difNorm;
+
+  const overdueComponent = context.overdueValue;
+  let diversityPenalty = 0;
+  if (extras && extras.diversityPenalty) {
+    diversityPenalty = extras.diversityPenalty;
+  }
+
+  const score = eviPerMin + overdueComponent - diversityPenalty + custos;
+
+  return {
+    score,
+    components: {
+      eviPerMin,
+      overdue: overdueComponent,
+      custos,
+      diversity: diversityPenalty,
+      tempoPrev: context.tempoPrevSeg,
+      deltaR
+    }
+  };
+}
+
+function calculatePriorityForRow(spacedItem, statsRow, settings, referenceDate, extras) {
+  const context = buildPriorityContext(spacedItem, statsRow, settings, referenceDate);
+  if (!context) {
+    return { score: 0, components: {}, context: null };
+  }
+
+  let result;
+  if (asBoolean(settings.useAdvancedPriority)) {
+    result = calculateAdvancedPriority(context, settings, extras);
+  } else {
+    result = calculateClassicPriority(context, settings);
+  }
+
+  return {
+    score: result.score,
+    components: result.components || {},
+    context
+  };
 }
 
 function calcOverdue(atrasoDias, S, alpha, mode) {
@@ -883,6 +1244,8 @@ function apiMakeReviewToday() {
     const spaced = readSheetData(SHEET_NAMES.SPACED);
     const statsSheet = ss.getSheetByName(SHEET_NAMES.STATS);
     const statsData = statsSheet ? readSheetData(SHEET_NAMES.STATS) : [];
+    const modelData = readSheetData(SHEET_NAMES.MODEL);
+    const examConfig = readSheetData(SHEET_NAMES.EXAM_CONFIG);
 
     const statsMap = {};
     statsData.forEach(row => {
@@ -890,22 +1253,45 @@ function apiMakeReviewToday() {
       statsMap[key] = row;
     });
 
+    const modelMap = {};
+    modelData.forEach(row => {
+      if (!row || !row.alvo) return;
+      modelMap[row.alvo] = row;
+    });
+
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
+    const horizonDays = determineHorizonDays(hoje, examConfig);
+    const useAdvanced = asBoolean(settings.useAdvancedPriority);
 
     const reviewList = [];
-    const priorityValues = [];
+    const priorityUpdates = [];
+    const priorityByAlvo = {};
     const priorityCol = HEADERS.SPACED.indexOf('prioridade') + 1;
 
-    spaced.forEach(item => {
+    const existingToday = readSheetData(SHEET_NAMES.REVER_HOJE);
+    const feitoMap = {};
+    existingToday.forEach(row => {
+      if (row && row.alvo) {
+        feitoMap[row.alvo] = row.feito;
+      }
+    });
+
+    spaced.forEach((item, idx) => {
       if (!item.alvo) {
-        priorityValues.push([0]);
+        priorityUpdates[idx] = { index: idx, alvo: '', value: 0 };
         return;
       }
 
       const statsRow = statsMap[item.alvo];
-      const prioridade = calculatePriorityForRow(item, statsRow, settings, hoje) || 0;
-      priorityValues.push([prioridade]);
+      const extras = {
+        modelRow: modelMap[item.alvo] || null,
+        horizonDays
+      };
+      const priorityInfo = calculatePriorityForRow(item, statsRow, settings, hoje, extras);
+      const prioridade = priorityInfo.score || 0;
+      priorityUpdates[idx] = { index: idx, alvo: item.alvo, value: prioridade };
+      priorityByAlvo[item.alvo] = prioridade;
 
       const proxima = item.proximaRevisao ? parseSheetDate(item.proximaRevisao) : null;
       if (!proxima || isNaN(proxima)) {
@@ -917,35 +1303,90 @@ function apiMakeReviewToday() {
         reviewList.push({
           alvo: item.alvo,
           prioridade: prioridade,
+          prioridadeBase: prioridade,
           proximaRevisao: proxima,
-          estabilidade: parseFloat(item.estabilidade) || settings.Smin
+          estabilidade: parseFloat(item.estabilidade) || settings.Smin,
+          components: priorityInfo.components || {},
+          context: priorityInfo.context || null,
+          feito: feitoMap[item.alvo] || '',
+          modelRow: extras.modelRow || null
         });
       }
     });
 
-    if (spaced.length > 0 && priorityCol > 0 && priorityValues.length === spaced.length) {
-      spacedSheet.getRange(2, priorityCol, priorityValues.length, 1).setValues(priorityValues);
+    if (useAdvanced && asBoolean(settings.useDiversityReg)) {
+      reviewList.sort((a, b) => (b.prioridade || 0) - (a.prioridade || 0));
+      const diversityCount = {};
+      reviewList.forEach(item => {
+        const areaKey = item.context && item.context.area ? item.context.area : 'Sem área';
+        const penalty = (settings.shrinkageC || 0) * (diversityCount[areaKey] || 0);
+        item.components = item.components || {};
+        item.components.diversity = penalty;
+        item.prioridade = (item.prioridadeBase || 0) - penalty;
+        diversityCount[areaKey] = (diversityCount[areaKey] || 0) + 1;
+        priorityByAlvo[item.alvo] = item.prioridade;
+      });
     }
 
-    reviewList.sort((a, b) => b.prioridade - a.prioridade);
+    reviewList.sort((a, b) => (b.prioridade || 0) - (a.prioridade || 0));
+
+    if (spaced.length > 0 && priorityCol > 0 && priorityUpdates.length === spaced.length) {
+      const values = spaced.map((row, idx) => {
+        const alvo = row.alvo;
+        const update = priorityUpdates[idx];
+        const fallback = update ? update.value : 0;
+        const val = alvo && priorityByAlvo[alvo] !== undefined ? priorityByAlvo[alvo] : fallback;
+        return [val];
+      });
+      spacedSheet.getRange(2, priorityCol, values.length, 1).setValues(values);
+    }
 
     clearSheetData(SHEET_NAMES.REVER_HOJE);
-    reviewList.forEach(item => {
-      writeSheetRow(SHEET_NAMES.REVER_HOJE, [
-        item.alvo,
-        item.prioridade,
-        item.proximaRevisao,
-        item.estabilidade
-      ]);
-    });
+    const rowsToWrite = reviewList.map(item => [
+      item.alvo,
+      item.prioridade,
+      item.proximaRevisao,
+      item.estabilidade,
+      item.feito || ''
+    ]);
+    if (rowsToWrite.length > 0) {
+      const startRow = reviewSheet.getLastRow() + 1;
+      reviewSheet.getRange(startRow, 1, rowsToWrite.length, HEADERS.REVER_HOJE.length).setValues(rowsToWrite);
+      reviewSheet.getRange(startRow, 3, rowsToWrite.length, 1).setNumberFormat('dd/mm/yyyy');
+    }
 
     SpreadsheetApp.flush();
+
+    if (reviewList.length > 0) {
+      const policyVersion = useAdvanced ? 'advanced_v1' : 'classic_v1';
+      const policyEntries = reviewList.map(item => {
+        const area = item.context && item.context.area ? item.context.area : parseAlvoParts(item.alvo).area;
+        const subarea = item.context && item.context.subarea ? item.context.subarea : parseAlvoParts(item.alvo).subarea;
+        const components = item.components || {};
+        return {
+          timestamp: new Date(),
+          alvo: item.alvo,
+          area: area,
+          subarea: subarea,
+          pri: item.prioridade,
+          eviPerMin: components.eviPerMin !== undefined ? components.eviPerMin : '',
+          overdue: components.overdue !== undefined ? components.overdue : '',
+          diversity: components.diversity !== undefined ? components.diversity : '',
+          custos: components.custos !== undefined ? components.custos : '',
+          tempoPrev: components.tempoPrev !== undefined ? components.tempoPrev : (item.context ? item.context.tempoPrevSeg : ''),
+          decisao: 'selected',
+          policyVersion: policyVersion
+        };
+      });
+      appendPolicyLogEntries(policyEntries);
+    }
 
     const responseList = reviewList.map(item => ({
       alvo: item.alvo,
       prioridade: item.prioridade,
       proximaRevisao: formatDateDDMMYYYY(item.proximaRevisao),
-      estabilidade: item.estabilidade
+      estabilidade: item.estabilidade,
+      feito: item.feito || ''
     }));
 
     return { ok: true, count: reviewList.length, data: responseList };
@@ -1317,15 +1758,33 @@ function apiLogReviewOutcome(payload) {
     let theta1;
     let theta2;
 
+    let sigmaAtual = 0.2;
+    let nEffAtual = 0;
+    let rlsState = null;
+
     if (modelIdx >= 0) {
       const modelRow = modelData[modelIdx];
       theta0 = parseFloat(modelRow.theta0);
       theta1 = parseFloat(modelRow.theta1);
       theta2 = parseFloat(modelRow.theta2);
+      const sigmaSheet = parseFloat(modelRow.sigma);
+      const nEffSheet = parseFloat(modelRow.n_eff);
+      if (!isNaN(sigmaSheet) && sigmaSheet > 0) {
+        sigmaAtual = sigmaSheet;
+      }
+      if (!isNaN(nEffSheet) && nEffSheet >= 0) {
+        nEffAtual = nEffSheet;
+      }
+      if (asBoolean(settings.useRLSKalman)) {
+        rlsState = ensureRlsState(alvo, 3, settings);
+      }
     } else {
       theta0 = Math.log(settings.Smin);
       theta1 = 0;
       theta2 = 0;
+      if (asBoolean(settings.useRLSKalman)) {
+        rlsState = ensureRlsState(alvo, 3, settings);
+      }
     }
 
     const statsData = readSheetData(SHEET_NAMES.STATS);
@@ -1347,20 +1806,24 @@ function apiLogReviewOutcome(payload) {
 
     const safeTDias = Math.max(tDias, 0.25);
     const S_obs = Math.max(calcSobs(safeTDias, metaUsada), settings.Smin / 4);
-
-    const lnS_hat = theta0 + theta1 * competencia + theta2 * difNorm;
     const lnS_obs = Math.log(S_obs);
-    const erro = lnS_obs - lnS_hat;
 
-    const weightBase = settings.reviewOutcomeWeight || 1;
-    const weight = clamp(weightBase * total, 1, 50);
+    const learningResult = performLearningStep(alvo, [theta0, theta1, theta2], x, lnS_obs, settings, {
+      total,
+      sigma2: sigmaAtual * sigmaAtual,
+      nEff: nEffAtual,
+      state: rlsState
+    });
 
-    theta0 = (1 - settings.regLambda) * theta0 + settings.lrEta * weight * erro * x[0];
-    theta1 = (1 - settings.regLambda) * theta1 + settings.lrEta * weight * erro * x[1];
-    theta2 = (1 - settings.regLambda) * theta2 + settings.lrEta * weight * erro * x[2];
-
-    const lnS_pred = theta0 + theta1 * competencia + theta2 * difNorm;
-    const S_pred = applyCapS(Math.exp(lnS_pred), settings.Smin, settings.Smax);
+    theta0 = learningResult.theta[0];
+    theta1 = learningResult.theta[1];
+    theta2 = learningResult.theta[2];
+    const S_pred = learningResult.S_pred;
+    sigmaAtual = Math.sqrt(Math.max(1e-6, learningResult.sigma2));
+    nEffAtual = learningResult.nEff;
+    if (asBoolean(settings.useRLSKalman) && learningResult.state) {
+      persistRlsState(alvo, learningResult.state);
+    }
 
     let I = calcOptimalInterval(S_pred, metaUsada);
     if (!isFinite(I)) {
@@ -1398,7 +1861,19 @@ function apiLogReviewOutcome(payload) {
       lapses: lapsesAtual
     };
 
-    const prioridade = calculatePriorityForRow(spacedObjForPriority, statsRow, settings, hojeSemHora);
+    const examConfig = readSheetData(SHEET_NAMES.EXAM_CONFIG);
+    const horizonDays = determineHorizonDays(hojeSemHora, examConfig);
+    const prioridadeInfo = calculatePriorityForRow(
+      spacedObjForPriority,
+      statsRow,
+      settings,
+      hojeSemHora,
+      {
+        modelRow: { sigma: sigmaAtual, n_eff: nEffAtual },
+        horizonDays
+      }
+    );
+    const prioridade = prioridadeInfo.score;
 
     const spacedRowValues = [
       alvo,
@@ -1422,7 +1897,9 @@ function apiLogReviewOutcome(payload) {
       theta1,
       theta2,
       S_pred,
-      hoje
+      hoje,
+      sigmaAtual,
+      nEffAtual
     ];
 
     if (modelIdx >= 0) {
@@ -1459,123 +1936,178 @@ function apiLogReviewOutcome(payload) {
 // ============================================================================
 
 function apiRecompute() {
+  let lock;
   try {
-    const lock = LockService.getScriptLock();
+    lock = LockService.getScriptLock();
     lock.tryLock(60000);
-    
+
     const settings = apiGetSettings();
     const revisaoLog = readSheetData(SHEET_NAMES.REVISAO_LOG);
     const statsData = readSheetData(SHEET_NAMES.STATS);
-    
-    // Ordenar por data
+    const spacedData = readSheetData(SHEET_NAMES.SPACED);
+
+    const statsMap = {};
+    statsData.forEach(row => {
+      if (!row) return;
+      const key = `${row.area}::${row.subarea}`;
+      statsMap[key] = row;
+    });
+
     revisaoLog.sort((a, b) => {
       const dateA = parseSheetDate(a.data) || new Date(0);
       const dateB = parseSheetDate(b.data) || new Date(0);
       return dateA - dateB;
     });
-    
-    // Mapa de modelos
+
     const models = {};
-    
+    const rlsStates = {};
+    const useRls = asBoolean(settings.useRLSKalman);
+
     revisaoLog.forEach(log => {
+      if (!log || !log.alvo) return;
       const alvo = log.alvo;
-      const tDias = parseFloat(log.tDias) || 0;
-      const metaUsada = parseFloat(log.metaUsada) || settings.retentionTarget;
-      const difPercebida = parseInt(log.difPercebida) || 3;
-      
-      // Inicializar modelo se não existir
+      const metaUsada = clamp(parseFloat(log.metaUsada) || settings.retentionTarget, 0.01, 0.99);
+      const difPercebida = parseInt(log.difPercebida, 10);
+      const difNorm = clamp(((isNaN(difPercebida) ? 3 : difPercebida) - 1) / 4, 0, 1);
+      const totalQuestoes = Math.max(1, parseFloat(log.total) || 1);
+      const tDias = Math.max(0.25, parseFloat(log.tDias) || 0.25);
+
       if (!models[alvo]) {
         models[alvo] = {
-          theta0: Math.log(settings.Smin),
-          theta1: 0,
-          theta2: 0,
+          theta: [Math.log(settings.Smin), 0, 0],
+          sigma2: 0.04,
+          nEff: 0,
           S_atual: settings.Smin
         };
       }
-      
-      const model = models[alvo];
-      const statRow = statsData.find(s => `${s.area}::${s.subarea}` === alvo);
-      
-      let competencia = 0.5;
-      if (statRow) {
-        competencia = parseFloat(statRow.acerto_28d) || parseFloat(statRow.acerto_vida) || 0.5;
-      }
-      
-      const difNorm = normalizeDif(difPercebida);
-      
-      // S_hat
-      const S_hat = calcStability(model.theta0, model.theta1, model.theta2, competencia, difNorm);
-      
-      // S_obs
-      const S_obs = calcSobs(tDias, metaUsada);
-      
-      // Atualizar θ
-      const lnS_obs = Math.log(S_obs);
-      const lnS_hat = Math.log(S_hat);
-      const erro = lnS_obs - lnS_hat;
-      
-      const x = [1, competencia, difNorm];
-      const thetas = [model.theta0, model.theta1, model.theta2];
-      
-      for (let i = 0; i < 3; i++) {
-        thetas[i] = (1 - settings.regLambda) * thetas[i] + settings.lrEta * erro * x[i];
-      }
-      
-      model.theta0 = thetas[0];
-      model.theta1 = thetas[1];
-      model.theta2 = thetas[2];
-      model.S_atual = applyCapS(S_obs, settings.Smin, settings.Smax);
-    });
-    // Atualizar aba MODEL
-    clearSheetData(SHEET_NAMES.MODEL);
-    const modelSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.MODEL);
-    
-    Object.keys(models).forEach(alvo => {
-      const m = models[alvo];
-      const rowData = [
-        alvo,
-        m.theta0,
-        m.theta1,
-        m.theta2,
-        m.S_atual,
-        new Date()
-      ];
-      writeSheetRow(SHEET_NAMES.MODEL, rowData);
-    });
-    
-    // Atualizar SPACED com novas estabilidades
-    const spacedData = readSheetData(SHEET_NAMES.SPACED);
-    const spacedSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.SPACED);
-    
-    spacedData.forEach((item, idx) => {
-      const alvo = item.alvo;
-      if (models[alvo]) {
-        const S_novo = models[alvo].S_atual;
-        let I = calcOptimalInterval(S_novo, settings.retentionTarget);
-        I = applyCapI(I, settings.Imin, settings.Imax);
-        
-        const ultimaRevisao = parseSheetDate(item.ultimaRevisao) || new Date();
-        const proximaRevisao = new Date(ultimaRevisao.getTime());
-        proximaRevisao.setDate(proximaRevisao.getDate() + Math.round(I));
 
-        const updatedRow = [
-          alvo,
-          ultimaRevisao,
-          S_novo,
-          item.dificuldade_media,
-          proximaRevisao,
-          item.lapses,
-          item.prioridade
-        ];
-        updateSheetRow(SHEET_NAMES.SPACED, idx, updatedRow);
+      const modelState = models[alvo];
+      const statsRow = statsMap[alvo];
+
+      let competencia = 0.5;
+      if (statsRow) {
+        const acc28 = parseFloat(statsRow.acerto_28d);
+        const accVida = parseFloat(statsRow.acerto_vida);
+        if (!isNaN(acc28) && acc28 > 0) {
+          competencia = clamp(acc28, 0, 1);
+        } else if (!isNaN(accVida) && accVida > 0) {
+          competencia = clamp(accVida, 0, 1);
+        }
+      }
+
+      const xVec = [1, competencia, difNorm];
+      const S_obs = Math.max(calcSobs(tDias, metaUsada), settings.Smin / 4);
+      const lnS_obs = Math.log(S_obs);
+
+      const rlsState = useRls ? (rlsStates[alvo] || ensureRlsState(alvo, xVec.length, settings)) : null;
+      const learningResult = performLearningStep(alvo, modelState.theta, xVec, lnS_obs, settings, {
+        total: totalQuestoes,
+        sigma2: modelState.sigma2,
+        nEff: modelState.nEff,
+        state: rlsState
+      });
+
+      modelState.theta = learningResult.theta;
+      modelState.sigma2 = learningResult.sigma2;
+      modelState.nEff = learningResult.nEff;
+      modelState.S_atual = learningResult.S_pred;
+      if (useRls && learningResult.state) {
+        rlsStates[alvo] = learningResult.state;
       }
     });
-    
+
+    if (useRls) {
+      Object.keys(rlsStates).forEach(alvo => {
+        persistRlsState(alvo, rlsStates[alvo]);
+      });
+    }
+
+    clearSheetData(SHEET_NAMES.MODEL);
+    const modelSheet = getOrCreateSheet(SHEET_NAMES.MODEL, HEADERS.MODEL);
+    const modelRows = Object.keys(models).map(alvo => {
+      const state = models[alvo];
+      const sigma = Math.sqrt(Math.max(1e-6, state.sigma2));
+      return [
+        alvo,
+        state.theta[0],
+        state.theta[1],
+        state.theta[2],
+        state.S_atual,
+        new Date(),
+        sigma,
+        state.nEff
+      ];
+    });
+    if (modelRows.length > 0) {
+      const startRow = modelSheet.getLastRow() + 1;
+      modelSheet.getRange(startRow, 1, modelRows.length, HEADERS.MODEL.length).setValues(modelRows);
+    }
+
+    const spacedSheet = getOrCreateSheet(SHEET_NAMES.SPACED, HEADERS.SPACED);
+    const examConfig = readSheetData(SHEET_NAMES.EXAM_CONFIG);
+    const horizonDays = determineHorizonDays(new Date(), examConfig);
+
+    spacedData.forEach((item, idx) => {
+      if (!item || !item.alvo || !models[item.alvo]) return;
+      const alvo = item.alvo;
+      const modelState = models[alvo];
+      const S_novo = modelState.S_atual;
+      let I = calcOptimalInterval(S_novo, settings.retentionTarget);
+      if (!isFinite(I)) {
+        I = settings.Imin;
+      }
+      I = applyCapI(Math.round(I), settings.Imin, settings.Imax);
+
+      const ultimaRevisao = parseSheetDate(item.ultimaRevisao) || new Date();
+      const proximaRevisao = new Date(ultimaRevisao.getTime());
+      proximaRevisao.setDate(proximaRevisao.getDate() + I);
+
+      const statsRow = statsMap[alvo];
+      const spacedObjForPriority = {
+        alvo: alvo,
+        ultimaRevisao: ultimaRevisao,
+        estabilidade: S_novo,
+        dificuldade_media: item.dificuldade_media,
+        proximaRevisao: proximaRevisao,
+        lapses: item.lapses
+      };
+
+      const prioridadeInfo = calculatePriorityForRow(
+        spacedObjForPriority,
+        statsRow,
+        settings,
+        new Date(),
+        {
+          modelRow: { sigma: Math.sqrt(Math.max(1e-6, modelState.sigma2)), n_eff: modelState.nEff },
+          horizonDays
+        }
+      );
+
+      const updatedRow = [
+        alvo,
+        ultimaRevisao,
+        S_novo,
+        item.dificuldade_media,
+        proximaRevisao,
+        item.lapses,
+        prioridadeInfo.score
+      ];
+      updateSheetRow(SHEET_NAMES.SPACED, idx, updatedRow);
+    });
+
     SpreadsheetApp.flush();
-    lock.releaseLock();
-    
+    apiMakeReviewToday();
+
     return { ok: true, modelsUpdated: Object.keys(models).length };
   } catch (e) {
     return { ok: false, error: e.toString() };
+  } finally {
+    if (lock) {
+      try {
+        lock.releaseLock();
+      } catch (err) {
+        // ignore
+      }
+    }
   }
 }
