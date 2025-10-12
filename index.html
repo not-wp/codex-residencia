@@ -2441,6 +2441,10 @@
           updatePlannerSummaryUI();
           renderFilaRevisoes(reviewQueue || []);
 
+          if (result.fallbackToPriority) {
+            toast('Sem estimativa de ganho: usando Pri/min como fallback.', 'info');
+          }
+
           if (plannerAllocations.size > 0 && plannerSummary.allocated > 0) {
             toast(`Plano gerado para ${plannerAllocations.size} alvo(s).`, 'success');
           } else {

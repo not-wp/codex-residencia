@@ -1947,6 +1947,10 @@ function apiPlanDayBudget(params) {
     const maxTargetsInput = parseInt(config.maxTargets, 10);
     const maxTargets = isFinite(maxTargetsInput) && maxTargetsInput > 0 ? maxTargetsInput : 12;
     const useReviewHoje = config.useReviewHoje === undefined ? true : !!config.useReviewHoje;
+    const kappaInput = settings.kappaPriToDelta !== undefined && settings.kappaPriToDelta !== ''
+      ? parseFloat(settings.kappaPriToDelta)
+      : DEFAULT_SETTINGS.kappaPriToDelta;
+    const kappaPriToDelta = isFinite(kappaInput) ? kappaInput : DEFAULT_SETTINGS.kappaPriToDelta;
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
@@ -2100,6 +2104,7 @@ function apiPlanDayBudget(params) {
           totalMean = totalLCB;
         }
 
+        const priSafe = Math.max(prioridade, 0.01);
         score = Math.max(totalLCB, 0) / tempoScore;
         const perMinMean = parseFloat(components.eviPerMinMean);
         if (isFinite(perMinMean)) {
@@ -2107,21 +2112,24 @@ function apiPlanDayBudget(params) {
         }
         eviLCBPerMin = tempoScore > 0 ? Math.max(totalLCB, 0) / tempoScore : 0;
         deltaRpp = Math.max(0, totalMean) * 100;
+        if (deltaRpp <= 0 && priSafe > 0) {
+          const fallbackBase = context && context.baseRecall !== undefined
+            ? parseFloat(context.baseRecall)
+            : prioridade;
+          const safeBase = isFinite(fallbackBase) ? Math.max(0, fallbackBase) : Math.max(0, prioridade);
+          deltaRpp = Math.max(0, kappaPriToDelta * safeBase * 100);
+        }
       } else {
         const priSafe = Math.max(prioridade, 0.01);
         score = priSafe / tempoScore;
-        priPerMin = prioridade / tempoScore;
+        priPerMin = priSafe / tempoScore;
         const baseRecall = context && context.baseRecall !== undefined
           ? parseFloat(context.baseRecall)
           : null;
-        const kappaInput = settings.kappaPriToDelta !== undefined && settings.kappaPriToDelta !== ''
-          ? parseFloat(settings.kappaPriToDelta)
-          : DEFAULT_SETTINGS.kappaPriToDelta;
-        const kappa = isFinite(kappaInput) ? kappaInput : DEFAULT_SETTINGS.kappaPriToDelta;
         const recallBase = baseRecall !== null && isFinite(baseRecall)
           ? Math.max(0, baseRecall)
           : Math.max(0, prioridade);
-        deltaRpp = kappa * recallBase * 100;
+        deltaRpp = kappaPriToDelta * recallBase * 100;
       }
 
       const atrasoDias = context && context.atrasoDias !== undefined
@@ -2141,7 +2149,9 @@ function apiPlanDayBudget(params) {
         score: isFinite(score) ? score : 0,
         eviPerMin: eviPerMinMean,
         eviLCBPerMin,
-        priPerMin,
+        priPerMin: priPerMin !== null
+          ? priPerMin
+          : (tempoScore > 0 ? Math.max(prioridade, 0.01) / tempoScore : 0),
         deltaRpp: isFinite(deltaRpp) ? Math.max(0, deltaRpp) : 0,
         feito: entry.feito || '',
         baseRecall: context && context.baseRecall !== undefined ? context.baseRecall : null,
@@ -2160,6 +2170,21 @@ function apiPlanDayBudget(params) {
         areas: [],
         mode: useAdvanced ? 'advanced' : 'classic'
       };
+    }
+
+    let fallbackToPriority = false;
+    if (useAdvanced) {
+      const totalScore = items.reduce((sum, item) => sum + Math.max(item.score || 0, 0), 0);
+      if (totalScore <= 0) {
+        fallbackToPriority = true;
+        items.forEach(item => {
+          const priScore = Math.max(item.prioridade || 0.01, 0.01) / Math.max(item.tempoScore || 1, 1);
+          item.score = priScore;
+          item.eviPerMin = null;
+          item.eviLCBPerMin = null;
+          item.priPerMin = priScore;
+        });
+      }
     }
 
     items.sort((a, b) => {
@@ -2273,9 +2298,9 @@ function apiPlanDayBudget(params) {
         S: item.S,
         t: item.t,
         tempoMedio: tempoMedioOut,
-        eviPerMin: useAdvanced ? item.eviPerMin : null,
-        eviLCBPerMin: useAdvanced ? item.eviLCBPerMin : null,
-        priPerMin: !useAdvanced ? item.priPerMin : null,
+        eviPerMin: useAdvanced && !fallbackToPriority ? item.eviPerMin : null,
+        eviLCBPerMin: useAdvanced && !fallbackToPriority ? item.eviLCBPerMin : null,
+        priPerMin: !useAdvanced || fallbackToPriority ? item.priPerMin : null,
         allocMin: alloc,
         deltaRpp: alloc > 0 ? item.deltaRpp : 0,
         feito: item.feito || '',
@@ -2309,7 +2334,8 @@ function apiPlanDayBudget(params) {
 
     return {
       ok: true,
-      mode: useAdvanced ? 'advanced' : 'classic',
+      mode: useAdvanced ? (fallbackToPriority ? 'classic' : 'advanced') : 'classic',
+      fallbackToPriority,
       budgetMin: budgetMin,
       allocatedMin: totalAlloc,
       totalDeltaRpp: totalDelta,
