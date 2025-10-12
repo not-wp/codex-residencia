@@ -2244,7 +2244,8 @@ function createPlannerItem(entry, statsMap, settings, index) {
     components,
     dueDate: entry.proximaRevisao || null,
     context,
-    score: 0
+    score: 0,
+    modelRow: entry.modelRow || null
   };
 }
 
@@ -2334,6 +2335,27 @@ function applyPlanningModeAdjustments(settings, mode) {
     settings.betaUncertainty = beta * (parseFloat(settings.maintBetaScale) || DEFAULT_SETTINGS.maintBetaScale || 1);
   }
   return settings;
+}
+
+function normalizePlannerConfig(config) {
+  const params = config || {};
+  const budgetInput = parseFloat(params.budgetMin);
+  const budgetMin = isFinite(budgetInput) && budgetInput > 0 ? budgetInput : 0;
+  const roundInput = parseFloat(params.roundTo);
+  const roundTo = isFinite(roundInput) && roundInput > 0 ? Math.max(1, Math.round(roundInput)) : 5;
+  const minPriorityInput = params.minPriority !== undefined ? parseFloat(params.minPriority) : 0;
+  const minPriority = isFinite(minPriorityInput) ? minPriorityInput : 0;
+  const maxTargetsInput = parseInt(params.maxTargets, 10);
+  const maxTargets = isFinite(maxTargetsInput) && maxTargetsInput > 0 ? maxTargetsInput : 12;
+  const useReviewHoje = params.useReviewHoje === undefined ? true : !!params.useReviewHoje;
+
+  return {
+    budgetMin,
+    roundTo,
+    minPriority,
+    maxTargets,
+    useReviewHoje
+  };
 }
 
 function buildProportionalPlan(items, options, settings) {
@@ -2461,6 +2483,15 @@ function buildProportionalPlan(items, options, settings) {
     const deltaRaw = allocRounded > 0 ? gainPerMin * allocRounded : 0;
     const delta = Math.max(0, Math.round(deltaRaw * 10) / 10);
     const tempoOut = Math.round((item.tempoMedio || 0) * 100) / 100;
+    const diagSource = item.modelRow || item.diagnostics || null;
+    const sigmaRaw = diagSource && diagSource.sigma !== undefined
+      ? parseFloat(diagSource.sigma)
+      : (item.sigma !== undefined ? parseFloat(item.sigma) : NaN);
+    const nEffRaw = diagSource && (diagSource.n_eff !== undefined || diagSource.nEff !== undefined)
+      ? parseFloat(diagSource.n_eff !== undefined ? diagSource.n_eff : diagSource.nEff)
+      : (item.nEff !== undefined ? parseFloat(item.nEff) : NaN);
+    const sigmaVal = isFinite(sigmaRaw) && sigmaRaw > 0 ? sigmaRaw : null;
+    const nEffVal = isFinite(nEffRaw) && nEffRaw >= 0 ? nEffRaw : null;
     return {
       alvo: item.alvo,
       area: item.area,
@@ -2476,7 +2507,9 @@ function buildProportionalPlan(items, options, settings) {
       deltaRpp: delta,
       feito: item.feito || '',
       baseRecall: item.baseRecall,
-      score: item.score
+      score: item.score,
+      sigma: sigmaVal,
+      nEff: nEffVal
     };
   });
 
@@ -2505,16 +2538,13 @@ function apiPlanDayBudget(params) {
     }
 
     const planningSettings = applyPlanningModeAdjustments(Object.assign({}, settings), config.mode);
+    const normalizedConfig = normalizePlannerConfig(config);
     const useAdvanced = asBoolean(planningSettings.useAdvancedPriority);
-    const budgetInput = parseFloat(config.budgetMin);
-    const budgetMin = isFinite(budgetInput) && budgetInput > 0 ? budgetInput : 0;
-    const roundInput = parseFloat(config.roundTo);
-    const roundTo = isFinite(roundInput) && roundInput > 0 ? Math.max(1, Math.round(roundInput)) : 5;
-    const minPriorityInput = config.minPriority !== undefined ? parseFloat(config.minPriority) : 0;
-    const minPriority = isFinite(minPriorityInput) ? minPriorityInput : 0;
-    const maxTargetsInput = parseInt(config.maxTargets, 10);
-    const maxTargets = isFinite(maxTargetsInput) && maxTargetsInput > 0 ? maxTargetsInput : 12;
-    const useReviewHoje = config.useReviewHoje === undefined ? true : !!config.useReviewHoje;
+    const budgetMin = normalizedConfig.budgetMin;
+    const roundTo = normalizedConfig.roundTo;
+    const minPriority = normalizedConfig.minPriority;
+    const maxTargets = normalizedConfig.maxTargets;
+    const useReviewHoje = normalizedConfig.useReviewHoje;
     const kappaInput = planningSettings.kappaPriToDelta !== undefined && planningSettings.kappaPriToDelta !== ''
       ? parseFloat(planningSettings.kappaPriToDelta)
       : DEFAULT_SETTINGS.kappaPriToDelta;
@@ -2661,6 +2691,113 @@ function apiPlanDayBudget(params) {
       totalDeltaRpp: plan.totalDelta,
       targets: plan.targets,
       areas
+    };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function computeModeDiagnostics(targets) {
+  const response = {
+    avgSigma: null,
+    avgNEff: null,
+    lowDataShare: 0,
+    lowDataCount: 0,
+    count: 0
+  };
+  if (!Array.isArray(targets) || targets.length === 0) {
+    return response;
+  }
+
+  let sigmaSum = 0;
+  let sigmaCount = 0;
+  let nEffSum = 0;
+  let nEffCount = 0;
+  let lowDataCount = 0;
+  const threshold = 20;
+
+  targets.forEach(target => {
+    if (!target) return;
+    const sigmaVal = target.sigma !== undefined && target.sigma !== null
+      ? parseFloat(target.sigma)
+      : (target.modelRow && target.modelRow.sigma !== undefined ? parseFloat(target.modelRow.sigma) : NaN);
+    if (isFinite(sigmaVal) && sigmaVal > 0) {
+      sigmaSum += sigmaVal;
+      sigmaCount++;
+    }
+
+    const nEffVal = target.nEff !== undefined && target.nEff !== null
+      ? parseFloat(target.nEff)
+      : (target.modelRow && (target.modelRow.n_eff !== undefined || target.modelRow.nEff !== undefined)
+        ? parseFloat(target.modelRow.n_eff !== undefined ? target.modelRow.n_eff : target.modelRow.nEff)
+        : NaN);
+    if (isFinite(nEffVal) && nEffVal >= 0) {
+      nEffSum += nEffVal;
+      nEffCount++;
+      if (nEffVal < threshold) {
+        lowDataCount++;
+      }
+    }
+  });
+
+  response.count = targets.length;
+  response.lowDataCount = lowDataCount;
+  response.lowDataShare = targets.length > 0 ? lowDataCount / targets.length : 0;
+  response.avgSigma = sigmaCount > 0 ? sigmaSum / sigmaCount : null;
+  response.avgNEff = nEffCount > 0 ? nEffSum / nEffCount : null;
+  return response;
+}
+
+function apiCompareModes(params) {
+  try {
+    const settings = apiGetSettings();
+    if (!asBoolean(settings.useBanditPlanner)) {
+      return { ok: false, disabled: true };
+    }
+
+    const baseConfig = normalizePlannerConfig(params || {});
+    const powerParams = Object.assign({}, baseConfig, { mode: 'power' });
+    const maintenanceParams = Object.assign({}, baseConfig, { mode: 'maintenance' });
+
+    const powerPlan = apiPlanDayBudget(powerParams);
+    if (!powerPlan || powerPlan.disabled) {
+      return { ok: false, disabled: true };
+    }
+    if (!powerPlan.ok) {
+      return { ok: false, error: powerPlan.error || 'Falha ao simular modo Power' };
+    }
+
+    const maintenancePlan = apiPlanDayBudget(maintenanceParams);
+    if (!maintenancePlan || maintenancePlan.disabled) {
+      return { ok: false, disabled: true };
+    }
+    if (!maintenancePlan.ok) {
+      return { ok: false, error: maintenancePlan.error || 'Falha ao simular modo Maintenance' };
+    }
+
+    const powerDiag = computeModeDiagnostics(powerPlan.targets || []);
+    const maintenanceDiag = computeModeDiagnostics(maintenancePlan.targets || []);
+
+    const sanitizeModeOutput = function(plan, diag) {
+      return {
+        totalDeltaRpp: Number(plan.totalDeltaRpp) || 0,
+        areas: Array.isArray(plan.areas) ? plan.areas : [],
+        avgSigma: diag.avgSigma,
+        avgNEff: diag.avgNEff,
+        lowDataShare: diag.lowDataShare,
+        lowDataCount: diag.lowDataCount,
+        targetCount: diag.count,
+        allocatedMin: Number(plan.allocatedMin) || 0,
+        fallbackToPriority: !!plan.fallbackToPriority,
+        modeUsed: plan.mode || ''
+      };
+    };
+
+    return {
+      ok: true,
+      budgetMin: baseConfig.budgetMin,
+      power: sanitizeModeOutput(powerPlan, powerDiag),
+      maintenance: sanitizeModeOutput(maintenancePlan, maintenanceDiag)
     };
   } catch (e) {
     return { ok: false, error: e.toString() };

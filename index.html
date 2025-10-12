@@ -670,6 +670,149 @@
       border-style: dashed;
     }
 
+    .comparison-controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .mode-explainer {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin-top: 8px;
+    }
+
+    .mode-pill {
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      border-radius: 12px;
+      padding: 12px 14px;
+      background: rgba(15, 23, 42, 0.55);
+    }
+
+    .mode-pill strong {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.95rem;
+      color: var(--text-primary);
+    }
+
+    .mode-pill p {
+      margin-top: 6px;
+      font-size: 0.86rem;
+      color: var(--text-secondary);
+    }
+
+    .mode-comparison-grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      margin-top: 16px;
+    }
+
+    .mode-box {
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      border-radius: 14px;
+      padding: 18px;
+      background: rgba(15, 23, 42, 0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 180px;
+    }
+
+    .mode-box h3 {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 0;
+      font-size: 1rem;
+      color: var(--text-primary);
+    }
+
+    .mode-gain {
+      font-size: 1.8rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .mode-gain small {
+      display: block;
+      margin-top: 4px;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      font-weight: 400;
+    }
+
+    .mode-metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .metric-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.16);
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      margin-right: 8px;
+      margin-bottom: 6px;
+    }
+
+    .metric-chip.warning {
+      background: rgba(239, 68, 68, 0.18);
+      color: #fca5a5;
+    }
+
+    .mode-area-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .mode-area-chips .planner-chip {
+      margin: 0;
+    }
+
+    .mode-diagnosis {
+      margin-top: 18px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .mode-guidance {
+      margin-top: 10px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+
+    .mode-summary-row {
+      margin-top: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .mode-summary-row .summary-text {
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .info-icon {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      cursor: help;
+    }
+
     .planner-mode {
       display: flex;
       align-items: center;
@@ -1450,6 +1593,56 @@
         </div>
       </div>
 
+      <div class="card" id="modeComparisonCard">
+        <div class="comparison-controls">
+          <div>
+            <h2>Power vs Maintenance</h2>
+            <p class="helper-text">
+              Compare como cada modo distribui o mesmo orçamento para maximizar ganho ou preservar consistência.
+            </p>
+          </div>
+          <button type="button" class="btn btn-secondary" id="compareModesBtn" onclick="compareModes()">⚖️ Comparar modos</button>
+        </div>
+
+        <div class="mode-explainer">
+          <div class="mode-pill">
+            <strong>Power <span class="info-icon" title="Foco em alto EVI/min, exploração maior e diversidade controlada.">ⓘ</span></strong>
+            <p>Indicado para sprints e ganho rápido: prioriza alvos com maior ganho marginal por minuto, aceitando mais incerteza.</p>
+          </div>
+          <div class="mode-pill">
+            <strong>Maintenance <span class="info-icon" title="Prioriza dívida, diversidade e decisões seguras com LCB mais rígido.">ⓘ</span></strong>
+            <p>Ideal para manter retenção e cobertura equilibrada: aumenta peso para overdue e reduz exploração agressiva.</p>
+          </div>
+        </div>
+
+        <div class="mode-comparison-grid">
+          <div class="mode-box" id="powerModeBox">
+            <h3>Power <span class="info-icon" title="Exploração ↑, penalização por incerteza ↓, diversidade ↓.">ⓘ</span></h3>
+            <div class="mode-gain" id="powerGainValue">—</div>
+            <div class="mode-metrics" id="powerMetricChips"></div>
+            <div class="mode-area-chips" id="powerAreaChips"></div>
+          </div>
+          <div class="mode-box" id="maintenanceModeBox">
+            <h3>Maintenance <span class="info-icon" title="Exploração ↓, diversidade ↑, decisões mais conservadoras.">ⓘ</span></h3>
+            <div class="mode-gain" id="maintenanceGainValue">—</div>
+            <div class="mode-metrics" id="maintenanceMetricChips"></div>
+            <div class="mode-area-chips" id="maintenanceAreaChips"></div>
+          </div>
+        </div>
+
+        <div class="mode-diagnosis" id="modeDiagnosisText">
+          Execute a comparação para entender por que cada modo recomenda ganhos diferentes com o mesmo orçamento.
+        </div>
+        <div class="mode-guidance" id="modeGuidanceText">
+          Se busca acelerar ganhos hoje, escolha Power. Se precisa equilibrar áreas e manter retenção, escolha Maintenance.
+        </div>
+
+        <div class="mode-summary-row">
+          <div class="summary-text" id="modeSummaryText">Modo atual: —</div>
+          <button type="button" class="btn btn-primary" onclick="aplicarPlanoAtual()">Aplicar plano do modo atual</button>
+        </div>
+      </div>
+
       <div class="card" id="retrospectivaCard">
         <h2>Retrospectiva do Dia</h2>
         <p class="helper-text">Revise o que foi concluído e registre o ganho estimado ao encerrar o dia.</p>
@@ -1859,6 +2052,7 @@
     let plannerModeSelection = (localStorage.getItem('plannerMode') || 'power');
     let weeklyPlanData = null;
     let retrospectiveSnapshot = null;
+    let modeComparisonResult = null;
 
     const alvoSuggestionSet = new Set();
     const areaSuggestionSet = new Set();
@@ -2035,15 +2229,258 @@
       };
     }
 
+    function renderModeAreaChips(containerId, areas) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '';
+      if (!Array.isArray(areas) || areas.length === 0) {
+        const emptyChip = document.createElement('span');
+        emptyChip.className = 'planner-chip';
+        emptyChip.textContent = 'Sem alocações';
+        container.appendChild(emptyChip);
+        return;
+      }
+      areas.forEach(area => {
+        const chip = document.createElement('span');
+        chip.className = 'planner-chip';
+        const allocVal = Number(area.allocMin) || 0;
+        const deltaVal = Number(area.deltaRpp) || 0;
+        chip.textContent = `${area.area || '—'}: ${allocVal.toFixed(0)} min (+${deltaVal.toFixed(1)}%)`;
+        container.appendChild(chip);
+      });
+    }
+
+    function renderModeMetrics(containerId, modeData) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '';
+
+      const sigmaChip = document.createElement('span');
+      sigmaChip.className = 'metric-chip';
+      if (modeData && isFinite(Number(modeData.avgSigma)) && Number(modeData.avgSigma) > 0) {
+        sigmaChip.textContent = `σ̄=${Number(modeData.avgSigma).toFixed(2)}`;
+      } else {
+        sigmaChip.textContent = 'σ̄=—';
+      }
+      container.appendChild(sigmaChip);
+
+      const nEffChip = document.createElement('span');
+      nEffChip.className = 'metric-chip';
+      if (modeData && isFinite(Number(modeData.avgNEff))) {
+        nEffChip.textContent = `n_eff̄=${Number(modeData.avgNEff).toFixed(1)}`;
+      } else {
+        nEffChip.textContent = 'n_eff̄=—';
+      }
+      container.appendChild(nEffChip);
+
+      const share = modeData && isFinite(Number(modeData.lowDataShare))
+        ? Math.max(0, Math.min(1, Number(modeData.lowDataShare)))
+        : null;
+      const lowChip = document.createElement('span');
+      lowChip.className = 'metric-chip';
+      if (share !== null) {
+        const pct = (share * 100);
+        lowChip.textContent = `dados baixos: ${pct.toFixed(0)}%`;
+        if (pct >= 40) {
+          lowChip.classList.add('warning');
+        }
+      } else {
+        lowChip.textContent = 'dados baixos: —';
+      }
+      container.appendChild(lowChip);
+
+      if (modeData && modeData.fallbackToPriority) {
+        const fallbackChip = document.createElement('span');
+        fallbackChip.className = 'metric-chip warning';
+        fallbackChip.textContent = 'Pri/min (sem EVI)';
+        container.appendChild(fallbackChip);
+      }
+    }
+
+    function updateModeComparisonUI() {
+      const powerGainEl = document.getElementById('powerGainValue');
+      const maintenanceGainEl = document.getElementById('maintenanceGainValue');
+      const diagEl = document.getElementById('modeDiagnosisText');
+      const guidanceEl = document.getElementById('modeGuidanceText');
+      const summaryEl = document.getElementById('modeSummaryText');
+      const compareBtn = document.getElementById('compareModesBtn');
+
+      if (!powerGainEl || !maintenanceGainEl) {
+        return;
+      }
+
+      const plannerEnabled = toBool((currentSettings || {}).useBanditPlanner);
+      if (compareBtn) {
+        compareBtn.disabled = !plannerEnabled;
+      }
+
+      const data = modeComparisonResult && modeComparisonResult.ok !== false ? modeComparisonResult : null;
+      const power = data ? data.power : null;
+      const maintenance = data ? data.maintenance : null;
+
+      const renderGain = (el, modeData) => {
+        if (!el) return;
+        if (!modeData) {
+          el.textContent = '—';
+          return;
+        }
+        const gain = Number(modeData.totalDeltaRpp);
+        const alloc = Number(modeData.allocatedMin) || 0;
+        const fallback = !!modeData.fallbackToPriority;
+        if (!isFinite(gain) || gain < 0) {
+          const secondary = alloc > 0 ? `${alloc.toFixed(0)} min planejados` : 'Sem alocação';
+          el.innerHTML = `—<small>${secondary}</small>`;
+          return;
+        }
+        const formatted = `+${gain.toFixed(1)} pp`;
+        let secondary = alloc > 0 ? `${alloc.toFixed(0)} min planejados` : 'Sem alocação';
+        if (fallback) {
+          secondary = 'Sem estimativa: usando Pri/min';
+        }
+        el.innerHTML = `${formatted}<small>${secondary}</small>`;
+      };
+
+      renderGain(powerGainEl, power);
+      renderGain(maintenanceGainEl, maintenance);
+
+      renderModeMetrics('powerMetricChips', power);
+      renderModeMetrics('maintenanceMetricChips', maintenance);
+      renderModeAreaChips('powerAreaChips', power && Array.isArray(power.areas) ? power.areas : []);
+      renderModeAreaChips('maintenanceAreaChips', maintenance && Array.isArray(maintenance.areas) ? maintenance.areas : []);
+
+      if (diagEl) {
+        let message = 'Execute a comparação para entender o comportamento dos modos.';
+        if (power && maintenance) {
+          const powerGain = Number(power.totalDeltaRpp) || 0;
+          const maintenanceGain = Number(maintenance.totalDeltaRpp) || 0;
+          const powerShare = Number(power.lowDataShare);
+          const powerNEff = Number(power.avgNEff);
+          const highUncertainty = (isFinite(powerShare) && powerShare > 0.35) || (isFinite(powerNEff) && powerNEff < 15);
+          if (powerGain < maintenanceGain - 0.1) {
+            if (highUncertainty) {
+              message = 'Power está prevendo menor ganho agora porque há poucos dados recentes e/ou incerteza alta (n_eff baixo, σ elevado). Em janelas curtas o LCB penaliza mais; com mais dados e sessões longas, a estimativa tende a normalizar.';
+            } else {
+              message = 'Maintenance está entregando ganho maior no momento porque privilegia dívida e diversidade. Use Power quando aceitar explorar mais para acelerar o ganho imediato.';
+            }
+          } else if (maintenanceGain < powerGain - 0.1) {
+            message = 'Maintenance projeta ganho menor porque privilegia segurança e cobertura equilibrada. Mesmo assim ele reduz risco e mantém retenção enquanto Power foca no ganho imediato.';
+          } else {
+            message = 'Os dois modos estão projetando ganhos semelhantes com o orçamento atual — escolha com base na meta do dia.';
+          }
+        }
+        diagEl.textContent = message;
+      }
+
+      if (guidanceEl) {
+        guidanceEl.textContent = 'Se busca acelerar ganhos hoje, escolha Power. Se precisa equilibrar áreas e manter retenção, escolha Maintenance.';
+      }
+
+      if (summaryEl) {
+        const modeLabel = plannerModeSelection === 'maintenance' ? 'Maintenance' : 'Power';
+        const budgetCandidate = data && isFinite(Number(data.budgetMin)) ? Number(data.budgetMin) : Number(plannerSummary.budget) || 0;
+        const budgetText = budgetCandidate > 0 ? `${Math.round(budgetCandidate)} min` : '—';
+        const modeData = plannerModeSelection === 'maintenance' ? maintenance : power;
+        let gainText = '—';
+        if (modeData && isFinite(Number(modeData.totalDeltaRpp))) {
+          const gainValue = Math.max(0, Number(modeData.totalDeltaRpp));
+          gainText = `+${gainValue.toFixed(1)} pp`;
+          if (modeData.fallbackToPriority) {
+            gainText += ' (Pri/min)';
+          }
+        }
+        summaryEl.textContent = `Modo atual: ${modeLabel} — orçamento ${budgetText} → ${gainText} previstos`;
+      }
+    }
+
+    function compareModes(silent = false) {
+      const enabled = toBool((currentSettings || {}).useBanditPlanner);
+      if (!enabled) {
+        if (!silent) {
+          toast('Ative “Planejador bandit” em Ajustes para usar esta comparação.', 'info');
+        }
+        return;
+      }
+
+      const budgetInput = document.getElementById('plannerBudget');
+      const compareBtn = document.getElementById('compareModesBtn');
+      const rawValue = budgetInput ? (budgetInput.value || '').toString().trim().replace(',', '.') : '';
+      let budget = parseFloat(rawValue);
+      if (!isFinite(budget) || budget <= 0) {
+        if (isFinite(Number(plannerSummary.budget)) && Number(plannerSummary.budget) > 0) {
+          budget = Number(plannerSummary.budget);
+        }
+      }
+      if (!isFinite(budget) || budget <= 0) {
+        if (!silent) {
+          toast('Informe um orçamento em minutos maior que zero para comparar os modos.', 'warning');
+        }
+        return;
+      }
+
+      const queueLength = Array.isArray(reviewQueue) ? reviewQueue.length : 0;
+      const params = {
+        budgetMin: budget,
+        useReviewHoje: true,
+        minPriority: 0,
+        maxTargets: queueLength > 0 ? Math.min(12, queueLength) : 12,
+        roundTo: 5
+      };
+
+      if (compareBtn) compareBtn.disabled = true;
+      if (!silent) setLoading(true);
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (compareBtn) compareBtn.disabled = false;
+          if (!silent) setLoading(false);
+
+          if (!result) {
+            toast('Erro na comparação: resposta vazia.', 'error');
+            return;
+          }
+
+          if (result.disabled) {
+            toast('O planejador está desativado nas Ajustes.', 'info');
+            modeComparisonResult = null;
+            updateModeComparisonUI();
+            return;
+          }
+
+          if (!result.ok) {
+            toast('Erro na comparação: ' + (result.error || 'falha desconhecida'), 'error');
+            return;
+          }
+
+          modeComparisonResult = result;
+          updateModeComparisonUI();
+          if (!silent) {
+            toast('Comparação concluída.', 'success');
+          }
+        })
+        .withFailureHandler(function(error) {
+          if (compareBtn) compareBtn.disabled = false;
+          if (!silent) setLoading(false);
+          toast('Erro na comparação: ' + (error && error.message ? error.message : error), 'error');
+        })
+        .apiCompareModes(params);
+    }
+
+    function aplicarPlanoAtual() {
+      calcularPlano();
+    }
+
     function resetPlannerState(clearSummary = true) {
       plannerAllocations = new Map();
       plannerAreas = [];
       const mode = toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic';
       plannerSummary = { budget: 0, allocated: 0, delta: 0, mode };
+      modeComparisonResult = null;
       if (clearSummary) {
         updatePlannerSummaryUI();
         retrospectiveSnapshot = null;
         updateRetrospectivaResumo(null);
+      } else {
+        updateModeComparisonUI();
       }
     }
 
@@ -2098,6 +2535,7 @@
         }
       }
       applyPlannerModeUI();
+      updateModeComparisonUI();
     }
 
     function updatePlannerControls() {
@@ -2130,6 +2568,7 @@
         localStorage.setItem('plannerMode', normalized);
       } catch (err) {}
       applyPlannerModeUI();
+      updateModeComparisonUI();
       if (plannerAllocations.size > 0 && toBool((currentSettings || {}).useBanditPlanner)) {
         toast('Recalculando plano para o novo modo...', 'info');
         calcularPlano();
@@ -2769,6 +3208,9 @@
       let previousSummary = null;
       let previousDone = null;
 
+      modeComparisonResult = null;
+      updateModeComparisonUI();
+
       if (preservePlan) {
         previousPlan = new Map(plannerAllocations);
         previousSummary = Object.assign({}, plannerSummary);
@@ -2976,6 +3418,12 @@
 
           updatePlannerSummaryUI();
           renderFilaRevisoes(reviewQueue || []);
+
+          if (plannerSummary && Number(plannerSummary.budget) > 0) {
+            compareModes(true);
+          } else {
+            updateModeComparisonUI();
+          }
 
           if (result.fallbackToPriority) {
             toast('Sem estimativa de ganho: usando Pri/min como fallback.', 'info');
