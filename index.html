@@ -474,6 +474,16 @@
       border-bottom: 1px solid var(--border);
     }
 
+    .compact-table th,
+    .compact-table td {
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+
+    .compact-table td:first-child {
+      white-space: normal;
+    }
+
     th {
       background: var(--bg-tertiary);
       color: var(--text-secondary);
@@ -1083,6 +1093,26 @@
           </table>
         </div>
       </div>
+
+      <div class="card">
+        <h2>Conteúdos atrasados</h2>
+        <p id="overdueHelper" class="helper-text">Carregando atrasos...</p>
+        <div style="overflow-x: auto;">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th>Conteúdo</th>
+                <th>Deveria em</th>
+                <th>Dias em atraso</th>
+                <th>Prioridade</th>
+              </tr>
+            </thead>
+            <tbody id="overdueBody">
+              <tr><td colspan="4" class="empty-state">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- LANÇAR BLOCO -->
@@ -1190,15 +1220,7 @@
           <div class="form-group">
             <label>Alvo (Área::Subárea)</label>
             <input type="text" id="revisaoAlvo" placeholder="Ex: Clínica Médica::Cardiologia" list="alvoSuggestions">
-            <small style="color: var(--text-secondary); font-size: 0.75rem;">Preencha o alvo completo ou informe área e subárea abaixo.</small>
-          </div>
-          <div class="form-group">
-            <label>Área</label>
-            <input type="text" id="revisaoArea" placeholder="Ex: Clínica Médica" list="areaSuggestions">
-          </div>
-          <div class="form-group">
-            <label>Subárea</label>
-            <input type="text" id="revisaoSubarea" placeholder="Ex: Cardiologia" list="subareaSuggestions">
+            <small style="color: var(--text-secondary); font-size: 0.75rem;">Escolha o alvo completo ou digite para usar o autocomplete.</small>
           </div>
           <div class="form-group">
             <label>Dias desde a última revisão</label>
@@ -1676,6 +1698,38 @@
       return { allocated: remainingAlloc, delta: remainingDelta };
     }
 
+    function summarizePlannerAllocations(sourceMap = plannerAllocations) {
+      const areaMap = new Map();
+      let totalAlloc = 0;
+      let totalDelta = 0;
+
+      if (sourceMap instanceof Map) {
+        sourceMap.forEach(target => {
+          if (!target) return;
+          const alloc = Number(target.allocMin) || 0;
+          const delta = Number(target.deltaRpp) || 0;
+          totalAlloc += alloc;
+          if (alloc > 0) {
+            totalDelta += delta;
+            const areaKey = target.area || 'Sem área';
+            if (!areaMap.has(areaKey)) {
+              areaMap.set(areaKey, { area: areaKey, allocMin: 0, deltaRpp: 0 });
+            }
+            const bucket = areaMap.get(areaKey);
+            bucket.allocMin += alloc;
+            bucket.deltaRpp += delta;
+          }
+        });
+      }
+
+      const areas = Array.from(areaMap.values()).sort((a, b) => (b.allocMin || 0) - (a.allocMin || 0));
+      return {
+        totalAlloc,
+        totalDelta,
+        areas
+      };
+    }
+
     function resetPlannerState(clearSummary = true) {
       plannerAllocations = new Map();
       plannerAreas = [];
@@ -1961,11 +2015,17 @@
       // Load review queue count
       google.script.run
         .withSuccessHandler(function(result) {
-          if (result.ok) {
+          if (result && result.ok) {
             document.getElementById('kpiRevisoesHoje').textContent = result.count || 0;
+            renderOverdueList(result.data || []);
+          } else {
+            renderOverdueList([]);
           }
         })
-        .withFailureHandler(handleError)
+        .withFailureHandler(function(error) {
+          handleError(error);
+          renderOverdueList([]);
+        })
         .apiMakeReviewToday();
     }
 
@@ -2022,7 +2082,7 @@
     function updateKPIs(calendarData) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      
+
       let proximos7d = 0;
       calendarData.forEach(item => {
         const itemDate = parseAppDate(item.data);
@@ -2034,6 +2094,83 @@
       });
 
       document.getElementById('kpiProximos7d').textContent = proximos7d;
+    }
+
+    function renderOverdueList(reviewData) {
+      const tbody = document.getElementById('overdueBody');
+      const helper = document.getElementById('overdueHelper');
+      if (!tbody) return;
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const msPerDay = 24 * 60 * 60 * 1000;
+
+      const overdue = [];
+      (Array.isArray(reviewData) ? reviewData : []).forEach(item => {
+        if (!item) return;
+        const dueDate = parseAppDate(item.proximaRevisao);
+        if (!dueDate) return;
+        const diff = Math.floor((today - dueDate) / msPerDay);
+        if (diff <= 0) return;
+        const prioridade = Number(item.prioridade);
+        const area = (item.area || '').trim();
+        const subarea = (item.subarea || '').trim();
+        overdue.push({
+          alvo: item.alvo || '',
+          area,
+          subarea,
+          dueDate,
+          overdueDays: diff,
+          prioridade: isNaN(prioridade) ? null : prioridade
+        });
+      });
+
+      overdue.sort((a, b) => {
+        if (b.overdueDays !== a.overdueDays) {
+          return b.overdueDays - a.overdueDays;
+        }
+        if ((b.prioridade || 0) !== (a.prioridade || 0)) {
+          return (b.prioridade || 0) - (a.prioridade || 0);
+        }
+        return (a.alvo || '').localeCompare(b.alvo || '', 'pt-BR');
+      });
+
+      tbody.innerHTML = '';
+
+      if (overdue.length === 0) {
+        if (helper) helper.textContent = 'Nenhum conteúdo atrasado 🎉';
+        tbody.innerHTML = '<tr><td colspan="4" class="empty-state">Sem conteúdos atrasados.</td></tr>';
+        return;
+      }
+
+      if (helper) helper.textContent = 'Revise primeiro os conteúdos mais atrasados.';
+
+      const limit = Math.min(overdue.length, 15);
+      for (let i = 0; i < limit; i++) {
+        const entry = overdue[i];
+        const label = entry.area
+          ? (entry.subarea ? `${entry.area} — ${entry.subarea}` : entry.area)
+          : (entry.alvo || '—');
+        const dateLabel = entry.dueDate.toLocaleDateString('pt-BR');
+        const daysText = entry.overdueDays === 1 ? '1 dia' : `${entry.overdueDays} dias`;
+        const priText = entry.prioridade !== null && isFinite(entry.prioridade)
+          ? entry.prioridade.toFixed(3)
+          : '—';
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${label}</td>
+          <td>${dateLabel}</td>
+          <td>${daysText}</td>
+          <td>${priText}</td>
+        `;
+        tbody.appendChild(row);
+      }
+
+      if (overdue.length > limit) {
+        const extraRow = document.createElement('tr');
+        extraRow.innerHTML = `<td colspan="4" class="helper-text">Mais ${overdue.length - limit} conteúdo(s) atrasado(s) não mostrado(s).</td>`;
+        tbody.appendChild(extraRow);
+      }
     }
 
     function verDetalhesData(dateISO) {
@@ -2259,23 +2396,8 @@
         .apiProcessAll();
     }
 
-    function atualizarFilaHojeSilencioso() {
-      google.script.run
-        .withSuccessHandler(function(result) {
-          if (result && result.ok) {
-            reviewQueue = (result.data || []).map(normalizeQueueItem);
-            resetPlannerState();
-            renderFilaRevisoes(reviewQueue);
-            addSuggestionsFromQueue(reviewQueue);
-            if (typeof result.count === 'number') {
-              document.getElementById('kpiRevisoesHoje').textContent = result.count;
-            }
-          }
-        })
-        .withFailureHandler(function(error) {
-          console.warn('Erro ao atualizar fila silenciosamente:', error);
-        })
-        .apiMakeReviewToday();
+    function atualizarFilaHojeSilencioso(preserve = true) {
+      gerarFilaHoje({ silent: true, preservePlan: preserve });
     }
 
     // ========================================================================
@@ -2283,6 +2405,22 @@
     // ========================================================================
     function gerarFilaHoje(options = {}) {
       const silent = options.silent === true;
+      const preservePlan = options.preservePlan === true && plannerAllocations instanceof Map && plannerAllocations.size > 0;
+      let previousPlan = null;
+      let previousSummary = null;
+      let previousDone = null;
+
+      if (preservePlan) {
+        previousPlan = new Map(plannerAllocations);
+        previousSummary = Object.assign({}, plannerSummary);
+        previousDone = new Map();
+        (Array.isArray(reviewQueue) ? reviewQueue : []).forEach(item => {
+          if (item && item.alvo) {
+            previousDone.set(item.alvo, !!item.__done);
+          }
+        });
+      }
+
       let timeoutId = null;
 
       if (!silent) {
@@ -2301,8 +2439,50 @@
           if (!silent) setLoading(false);
 
           if (result && result.ok) {
-            reviewQueue = (result.data || []).map(normalizeQueueItem);
-            resetPlannerState();
+            const policyVersion = result.policyVersion || '';
+            const policyMode = policyVersion.indexOf('advanced') === 0 ? 'advanced' : 'classic';
+            const normalized = (result.data || []).map(normalizeQueueItem);
+
+            if (preservePlan) {
+              if (previousDone) {
+                normalized.forEach(item => {
+                  if (previousDone.has(item.alvo)) {
+                    const wasDone = previousDone.get(item.alvo);
+                    item.__done = wasDone;
+                    item.feito = wasDone ? 1 : '';
+                  }
+                });
+              }
+              reviewQueue = normalized;
+              const filteredPlan = new Map();
+              normalized.forEach(item => {
+                if (previousPlan && previousPlan.has(item.alvo)) {
+                  filteredPlan.set(item.alvo, previousPlan.get(item.alvo));
+                }
+              });
+              plannerAllocations = filteredPlan;
+              const aggregates = summarizePlannerAllocations(plannerAllocations);
+              plannerAreas = aggregates.areas;
+              const prevBudget = previousSummary && previousSummary.budget !== undefined
+                ? previousSummary.budget
+                : (Number(result.budgetMin) || 0);
+              const rawAlloc = aggregates.totalAlloc;
+              const rawDelta = aggregates.totalDelta;
+              const totalAlloc = Number.isFinite(rawAlloc) ? Math.round(rawAlloc) : 0;
+              const totalDelta = Number.isFinite(rawDelta) ? Math.round(rawDelta * 10) / 10 : 0;
+              const safeDelta = totalDelta < 0 ? 0 : totalDelta;
+              plannerSummary = {
+                budget: prevBudget,
+                allocated: totalAlloc,
+                delta: safeDelta,
+                mode: policyMode
+              };
+            } else {
+              reviewQueue = normalized;
+              resetPlannerState(false);
+              plannerSummary.mode = policyMode;
+            }
+
             renderFilaRevisoes(reviewQueue);
             addSuggestionsFromQueue(reviewQueue);
 
@@ -2310,9 +2490,8 @@
             document.getElementById('kpiRevisoesHoje').textContent = count;
 
             const badgeEl = document.getElementById('policyBadge');
-            const policyVersion = result.policyVersion || '';
             if (badgeEl) {
-              const advanced = policyVersion.indexOf('advanced') === 0;
+              const advanced = policyMode === 'advanced';
               badgeEl.textContent = advanced ? 'Modo: EVI avançado' : 'Modo: clássico';
               if (advanced) {
                 badgeEl.classList.add('advanced');
@@ -2320,10 +2499,6 @@
                 badgeEl.classList.remove('advanced');
               }
             }
-
-            const policyMode = policyVersion.indexOf('advanced') === 0 ? 'advanced' : 'classic';
-            plannerSummary.mode = policyMode;
-            updatePlannerSummaryUI();
 
             const eviInfoEl = document.getElementById('policyEvi');
             if (eviInfoEl) {
@@ -2337,6 +2512,8 @@
                 eviInfoEl.textContent = 'EVI médio: —';
               }
             }
+
+            updatePlannerSummaryUI();
 
             if (!silent) {
               if (count === 0) {
@@ -2356,8 +2533,8 @@
           if (!silent) {
             setLoading(false);
             toast('Erro: ' + error.message, 'error');
-          document.getElementById('filaBody').innerHTML =
-            '<tr><td colspan="8" class="empty-state">Erro de conexão.</td></tr>';
+            document.getElementById('filaBody').innerHTML =
+              '<tr><td colspan="8" class="empty-state">Erro de conexão.</td></tr>';
           } else {
             console.warn('Erro ao gerar fila:', error);
           }
@@ -2428,13 +2605,21 @@
             if (!target || !target.alvo) return;
             plannerAllocations.set(target.alvo, target);
           });
-          plannerAreas = Array.isArray(result.areas) ? result.areas : [];
-          const allocated = Number(result.allocatedMin);
-          const delta = Number(result.totalDeltaRpp);
+          const aggregates = summarizePlannerAllocations(plannerAllocations);
+          if (aggregates.areas.length > 0) {
+            plannerAreas = aggregates.areas;
+          } else {
+            plannerAreas = Array.isArray(result.areas) ? result.areas : [];
+          }
+          const rawAlloc = aggregates.totalAlloc;
+          const rawDelta = aggregates.totalDelta;
+          const totalAlloc = Number.isFinite(rawAlloc) ? Math.round(rawAlloc) : 0;
+          const totalDelta = Number.isFinite(rawDelta) ? Math.round(rawDelta * 10) / 10 : 0;
+          const safeDelta = totalDelta < 0 ? 0 : totalDelta;
           plannerSummary = {
             budget: Number(result.budgetMin) || budget,
-            allocated: isNaN(allocated) ? 0 : Math.max(0, Math.round(allocated)),
-            delta: isNaN(delta) ? 0 : delta,
+            allocated: totalAlloc,
+            delta: safeDelta,
             mode: result.mode || (toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic')
           };
 
@@ -2570,11 +2755,9 @@
         }
 
         row.addEventListener('click', function() {
-          document.getElementById('revisaoAlvo').value = item.alvo;
-          if (item.alvo && item.alvo.includes('::')) {
-            const [area, subarea] = item.alvo.split('::');
-            document.getElementById('revisaoArea').value = area || '';
-            document.getElementById('revisaoSubarea').value = subarea || '';
+          const alvoField = document.getElementById('revisaoAlvo');
+          if (alvoField) {
+            alvoField.value = item.alvo;
           }
         });
 
@@ -2597,17 +2780,27 @@
 
 
     function salvarRevisao() {
-      const alvoInput = document.getElementById('revisaoAlvo').value.trim();
-      const area = document.getElementById('revisaoArea').value.trim();
-      const subarea = document.getElementById('revisaoSubarea').value.trim();
+      const alvoField = document.getElementById('revisaoAlvo');
+      const alvoInput = alvoField ? alvoField.value.trim() : '';
       let alvoFinal = alvoInput;
 
-      if (!alvoFinal && area && subarea) {
-        alvoFinal = `${area}::${subarea}`;
+      if (!alvoFinal) {
+        toast('Informe o alvo no formato Área::Subárea.', 'warning');
+        return;
       }
 
-      if (!alvoFinal) {
-        toast('Informe o alvo completo ou área e subárea.', 'warning');
+      let area = '';
+      let subarea = '';
+      if (alvoFinal.includes('::')) {
+        const [areaPart, ...subParts] = alvoFinal.split('::');
+        area = (areaPart || '').trim();
+        subarea = subParts.join('::').trim();
+        if (!area || !subarea) {
+          toast('Complete o alvo com área e subárea (Área::Subárea).', 'warning');
+          return;
+        }
+      } else {
+        toast('Use o formato Área::Subárea para identificar a revisão.', 'warning');
         return;
       }
 
@@ -2661,7 +2854,7 @@
             toast('Revisão registrada!', 'success');
             addSuggestionsFromQueue([{ alvo: alvoFinal }]);
             limparFormRevisao();
-            gerarFilaHoje({ silent: true });
+            gerarFilaHoje({ silent: true, preservePlan: true });
             if (document.getElementById('dashboard').classList.contains('active')) {
               carregarDadosDashboard();
             }
@@ -2679,8 +2872,6 @@
 
     function limparFormRevisao() {
       document.getElementById('revisaoAlvo').value = '';
-      document.getElementById('revisaoArea').value = '';
-      document.getElementById('revisaoSubarea').value = '';
       document.getElementById('revisaoTDias').value = '';
       document.getElementById('revisaoTotal').value = '';
       document.getElementById('revisaoAcertos').value = '';
