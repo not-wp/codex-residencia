@@ -27,7 +27,7 @@ const HEADERS = {
   REVER_HOJE: ['alvo', 'prioridade', 'proximaRevisao', 'estabilidade', 'feito'],
   MODEL: ['alvo', 'theta0', 'theta1', 'theta2', 'S_atual', 'ultima_atualizacao', 'sigma', 'n_eff'],
   REVISAO_LOG: ['data', 'alvo', 'tDias', 'metaUsada', 'p_prev', 'acertou', 'tempoSeg', 'difPercebida', 'flags', 'obs', 'total', 'acertos'],
-  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
+  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'kappaPriToDelta', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
   EXAM_CONFIG: ['area', 'peso', 'dataProva'],
   POLICY_LOG: ['timestamp', 'alvo', 'area', 'subarea', 'pri', 'eviPerMin', 'overdue', 'diversity', 'custos', 'tempoPrev', 'decisao', 'policyVersion'],
   EFFECTS: ['alvo', 'ATE_pct', 'lo', 'hi', 'n_pairs', 'updated']
@@ -52,6 +52,7 @@ const DEFAULT_SETTINGS = {
   shrinkageC: 8.0,
   lambdaDiversity: 0.25,
   planGainMix: 0.5,
+  kappaPriToDelta: 0.2,
   useAdvancedPriority: false,
   useGainLCB: true,
   useRLSKalman: true,
@@ -483,6 +484,9 @@ function apiSaveSettings(obj) {
     if (!isFinite(obj.lambdaDiversity)) obj.lambdaDiversity = DEFAULT_SETTINGS.lambdaDiversity;
     obj.planGainMix = clamp(parseFloat(obj.planGainMix), 0, 1);
     if (!isFinite(obj.planGainMix)) obj.planGainMix = DEFAULT_SETTINGS.planGainMix;
+    obj.kappaPriToDelta = parseFloat(obj.kappaPriToDelta);
+    if (!isFinite(obj.kappaPriToDelta)) obj.kappaPriToDelta = DEFAULT_SETTINGS.kappaPriToDelta;
+    obj.kappaPriToDelta = Math.max(0, obj.kappaPriToDelta);
     obj.useAdvancedPriority = asBoolean(obj.useAdvancedPriority);
     obj.useGainLCB = asBoolean(obj.useGainLCB);
     obj.useRLSKalman = asBoolean(obj.useRLSKalman);
@@ -1803,6 +1807,18 @@ function apiMakeReviewToday() {
         sigma: item.modelRow.sigma,
         n_eff: item.modelRow.n_eff
       } : null;
+      const context = item.context || null;
+      const alvoParts = context && (context.area || context.subarea)
+        ? { area: context.area, subarea: context.subarea }
+        : parseAlvoParts(item.alvo || '');
+      const tempoPrevSeg = context && context.tempoPrevSeg !== undefined
+        ? context.tempoPrevSeg
+        : (components.costMinutes !== undefined && components.costMinutes !== null
+          ? components.costMinutes * 60
+          : null);
+      const tempoPrevMin = tempoPrevSeg !== null && tempoPrevSeg !== undefined
+        ? tempoPrevSeg / 60
+        : (components.costMinutes !== undefined ? components.costMinutes : null);
       return {
         alvo: item.alvo,
         prioridade: item.prioridade,
@@ -1810,12 +1826,18 @@ function apiMakeReviewToday() {
         estabilidade: item.estabilidade,
         feito: item.feito || '',
         eviPerMin: components.eviPerMin !== undefined ? components.eviPerMin : null,
+        eviPerMinMean: components.eviPerMinMean !== undefined ? components.eviPerMinMean : null,
         eviTotal: components.eviTotalLCB !== undefined ? components.eviTotalLCB : null,
         custos: components.custos !== undefined ? components.custos : null,
         overdue: components.overdue !== undefined ? components.overdue : null,
         diversity: components.diversity !== undefined ? components.diversity : null,
         costMinutes: components.costMinutes !== undefined ? components.costMinutes : null,
-        diagnostics: diag
+        diagnostics: diag,
+        atrasoDias: context && context.atrasoDias !== undefined ? context.atrasoDias : null,
+        tempoPrevMin: tempoPrevMin,
+        baseRecall: context && context.baseRecall !== undefined ? context.baseRecall : null,
+        area: alvoParts.area || '',
+        subarea: alvoParts.subarea || ''
       };
     });
 
@@ -1901,6 +1923,399 @@ function apiEffortPlanner(budgetMinutes) {
       count: selected.length
     };
 
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiPlanDayBudget(params) {
+  try {
+    const settings = apiGetSettings();
+    const config = params || {};
+
+    if (!asBoolean(settings.useBanditPlanner)) {
+      return { ok: false, disabled: true };
+    }
+
+    const useAdvanced = asBoolean(settings.useAdvancedPriority);
+    const budgetInput = parseFloat(config.budgetMin);
+    const budgetMin = isFinite(budgetInput) && budgetInput > 0 ? budgetInput : 0;
+    const roundInput = parseFloat(config.roundTo);
+    const roundTo = isFinite(roundInput) && roundInput > 0 ? Math.max(1, Math.round(roundInput)) : 5;
+    const minPriorityInput = config.minPriority !== undefined ? parseFloat(config.minPriority) : 0;
+    const minPriority = isFinite(minPriorityInput) ? minPriorityInput : 0;
+    const maxTargetsInput = parseInt(config.maxTargets, 10);
+    const maxTargets = isFinite(maxTargetsInput) && maxTargetsInput > 0 ? maxTargetsInput : 12;
+    const useReviewHoje = config.useReviewHoje === undefined ? true : !!config.useReviewHoje;
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const gather = gatherReviewCandidates(settings, hoje);
+    const reviewList = gather.reviewList || [];
+    const reviewMap = {};
+    reviewList.forEach((item, idx) => {
+      if (item && item.alvo) {
+        reviewMap[item.alvo] = { item, idx };
+      }
+    });
+
+    const statsData = readSheetData(SHEET_NAMES.STATS);
+    const statsMap = {};
+    statsData.forEach(row => {
+      if (!row) return;
+      const key = `${row.area}::${row.subarea}`;
+      statsMap[key] = row;
+    });
+
+    let ordered = reviewList.slice();
+    if (useReviewHoje) {
+      const reviewHoje = readSheetData(SHEET_NAMES.REVER_HOJE);
+      if (reviewHoje.length > 0) {
+        const seen = new Set();
+        ordered = [];
+        reviewHoje.forEach((row, idx) => {
+          if (!row || !row.alvo) return;
+          const key = row.alvo;
+          seen.add(key);
+          if (reviewMap[key]) {
+            const existing = reviewMap[key].item;
+            existing.sheetIndex = idx;
+            ordered.push(existing);
+          } else {
+            const parsed = parseAlvoParts(key);
+            ordered.push({
+              alvo: key,
+              prioridade: Number(row.prioridade) || 0,
+              prioridadeBase: Number(row.prioridade) || 0,
+              proximaRevisao: row.proximaRevisao ? parseSheetDate(row.proximaRevisao) : null,
+              estabilidade: Number(row.estabilidade) || settings.Smin,
+              components: {},
+              context: {
+                alvo: key,
+                area: parsed.area,
+                subarea: parsed.subarea,
+                tempoPrevSeg: 60,
+                atrasoDias: null,
+                baseRecall: 0
+              },
+              feito: row.feito || '',
+              areaKey: parsed.area || 'Sem área',
+              sheetIndex: idx
+            });
+          }
+        });
+        reviewList.forEach((candidate, idx) => {
+          if (!candidate || !candidate.alvo) return;
+          if (!seen.has(candidate.alvo)) {
+            candidate.sheetIndex = reviewHoje.length + idx;
+            ordered.push(candidate);
+          }
+        });
+      }
+    }
+
+    if (ordered.length === 0) {
+      return {
+        ok: true,
+        budgetMin: budgetMin,
+        allocatedMin: 0,
+        totalDeltaRpp: 0,
+        targets: [],
+        areas: [],
+        mode: useAdvanced ? 'advanced' : 'classic'
+      };
+    }
+
+    const items = [];
+    ordered.forEach((entry, idx) => {
+      if (!entry || !entry.alvo) return;
+      const prioridade = Number(entry.prioridade) || 0;
+      if (prioridade < minPriority) {
+        return;
+      }
+
+      const context = entry.context || null;
+      const alvoParts = context && (context.area || context.subarea)
+        ? { area: context.area, subarea: context.subarea }
+        : parseAlvoParts(entry.alvo || '');
+      const area = (alvoParts.area || '').toString().trim();
+      const subarea = (alvoParts.subarea || '').toString().trim();
+      const statsRow = statsMap[`${area}::${subarea}`];
+
+      let tempoMedioMin = null;
+      if (statsRow && statsRow.tempo_medio !== undefined && statsRow.tempo_medio !== '') {
+        const tempoStats = parseFloat(statsRow.tempo_medio);
+        if (isFinite(tempoStats) && tempoStats > 0) {
+          tempoMedioMin = tempoStats / 60;
+        }
+      }
+      if (tempoMedioMin === null) {
+        const components = entry.components || {};
+        if (components.costMinutes !== undefined && components.costMinutes !== null) {
+          const costMin = parseFloat(components.costMinutes);
+          if (isFinite(costMin) && costMin > 0) {
+            tempoMedioMin = costMin;
+          }
+        }
+      }
+      if (tempoMedioMin === null && context && context.tempoPrevSeg !== undefined) {
+        const tempoSeg = parseFloat(context.tempoPrevSeg);
+        if (isFinite(tempoSeg) && tempoSeg > 0) {
+          tempoMedioMin = tempoSeg / 60;
+        }
+      }
+      if (tempoMedioMin === null || !isFinite(tempoMedioMin) || tempoMedioMin <= 0) {
+        tempoMedioMin = 1;
+      }
+
+      const tempoScore = Math.max(tempoMedioMin, 1);
+      const components = entry.components || {};
+      let score = 0;
+      let eviPerMinMean = null;
+      let eviLCBPerMin = null;
+      let priPerMin = null;
+      let deltaRpp = 0;
+
+      if (useAdvanced) {
+        let totalLCB = parseFloat(components.eviTotalLCB);
+        if (!isFinite(totalLCB) && components.eviPerMin !== undefined) {
+          const perMinLCB = parseFloat(components.eviPerMin);
+          if (isFinite(perMinLCB)) {
+            totalLCB = perMinLCB * tempoMedioMin;
+          }
+        }
+        if (!isFinite(totalLCB)) {
+          totalLCB = 0;
+        }
+
+        let totalMean = parseFloat(components.eviTotalMean);
+        if (!isFinite(totalMean) && components.eviPerMinMean !== undefined) {
+          const perMinMeanVal = parseFloat(components.eviPerMinMean);
+          if (isFinite(perMinMeanVal)) {
+            totalMean = perMinMeanVal * tempoMedioMin;
+          }
+        }
+        if (!isFinite(totalMean)) {
+          totalMean = totalLCB;
+        }
+
+        score = Math.max(totalLCB, 0) / tempoScore;
+        const perMinMean = parseFloat(components.eviPerMinMean);
+        if (isFinite(perMinMean)) {
+          eviPerMinMean = perMinMean;
+        }
+        eviLCBPerMin = tempoScore > 0 ? Math.max(totalLCB, 0) / tempoScore : 0;
+        deltaRpp = Math.max(0, totalMean) * 100;
+      } else {
+        const priSafe = Math.max(prioridade, 0.01);
+        score = priSafe / tempoScore;
+        priPerMin = prioridade / tempoScore;
+        const baseRecall = context && context.baseRecall !== undefined
+          ? parseFloat(context.baseRecall)
+          : null;
+        const kappaInput = settings.kappaPriToDelta !== undefined && settings.kappaPriToDelta !== ''
+          ? parseFloat(settings.kappaPriToDelta)
+          : DEFAULT_SETTINGS.kappaPriToDelta;
+        const kappa = isFinite(kappaInput) ? kappaInput : DEFAULT_SETTINGS.kappaPriToDelta;
+        const recallBase = baseRecall !== null && isFinite(baseRecall)
+          ? Math.max(0, baseRecall)
+          : Math.max(0, prioridade);
+        deltaRpp = kappa * recallBase * 100;
+      }
+
+      const atrasoDias = context && context.atrasoDias !== undefined
+        ? parseFloat(context.atrasoDias)
+        : null;
+      const estabilidade = parseFloat(entry.estabilidade);
+
+      items.push({
+        alvo: entry.alvo,
+        area,
+        subarea,
+        prioridade,
+        S: isFinite(estabilidade) ? estabilidade : null,
+        t: atrasoDias !== null && isFinite(atrasoDias) ? atrasoDias : null,
+        tempoMedio: tempoMedioMin,
+        tempoScore,
+        score: isFinite(score) ? score : 0,
+        eviPerMin: eviPerMinMean,
+        eviLCBPerMin,
+        priPerMin,
+        deltaRpp: isFinite(deltaRpp) ? Math.max(0, deltaRpp) : 0,
+        feito: entry.feito || '',
+        baseRecall: context && context.baseRecall !== undefined ? context.baseRecall : null,
+        sheetIndex: entry.sheetIndex !== undefined ? entry.sheetIndex : idx,
+        components
+      });
+    });
+
+    if (items.length === 0) {
+      return {
+        ok: true,
+        budgetMin: budgetMin,
+        allocatedMin: 0,
+        totalDeltaRpp: 0,
+        targets: [],
+        areas: [],
+        mode: useAdvanced ? 'advanced' : 'classic'
+      };
+    }
+
+    items.sort((a, b) => {
+      const diff = (b.score || 0) - (a.score || 0);
+      if (Math.abs(diff) > 1e-9) return diff;
+      return (a.sheetIndex || 0) - (b.sheetIndex || 0);
+    });
+
+    const limited = maxTargets > 0 && items.length > maxTargets ? items.slice(0, maxTargets) : items.slice();
+    const capacity = roundTo > 0 ? Math.min(limited.length, Math.floor(budgetMin / roundTo)) : limited.length;
+    const eligibleCount = capacity > 0 ? capacity : 0;
+    const eligible = limited.slice(0, eligibleCount);
+
+    const allocations = new Map();
+    limited.forEach(item => allocations.set(item.alvo, 0));
+
+    if (eligible.length > 0 && budgetMin > 0) {
+      const scores = eligible.map(it => Math.max(it.score || 0, 0));
+      const totalScore = scores.reduce((sum, val) => sum + val, 0);
+      if (totalScore > 0) {
+        const entries = eligible.map((item, index) => {
+          const score = scores[index];
+          const raw = budgetMin * score / totalScore;
+          let base = Math.floor(raw / roundTo) * roundTo;
+          if (!isFinite(base) || base < 0) base = 0;
+          const remainder = raw - base;
+          return {
+            item,
+            index,
+            score,
+            raw,
+            alloc: base,
+            remainder: isFinite(remainder) ? remainder : 0
+          };
+        });
+
+        let allocated = entries.reduce((sum, entry) => sum + entry.alloc, 0);
+        let remaining = Math.max(0, budgetMin - allocated);
+        if (remaining >= roundTo - 1e-6) {
+          const order = entries.slice().sort((a, b) => {
+            const diff = (b.remainder || 0) - (a.remainder || 0);
+            if (Math.abs(diff) > 1e-9) return diff;
+            return a.index - b.index;
+          });
+          let idx = 0;
+          while (remaining >= roundTo - 1e-6 && order.length > 0) {
+            const entry = order[idx % order.length];
+            entry.alloc += roundTo;
+            allocated += roundTo;
+            remaining = Math.max(0, budgetMin - allocated);
+            idx++;
+          }
+        }
+
+        const donorOrder = () => entries.slice().sort((a, b) => {
+          const diff = (b.alloc || 0) - (a.alloc || 0);
+          if (Math.abs(diff) > 1e-9) return diff;
+          return a.index - b.index;
+        });
+
+        entries.forEach(entry => {
+          if (entry.score <= 0 || entry.alloc >= roundTo || budgetMin < roundTo) return;
+          const donors = donorOrder();
+          for (let i = 0; i < donors.length; i++) {
+            const donor = donors[i];
+            if (donor === entry) continue;
+            if (donor.alloc > roundTo) {
+              donor.alloc -= roundTo;
+              entry.alloc += roundTo;
+              break;
+            }
+          }
+        });
+
+        let totalAllocated = entries.reduce((sum, entry) => sum + entry.alloc, 0);
+        if (totalAllocated > budgetMin + 1e-6) {
+          const ordered = donorOrder();
+          for (let i = 0; i < ordered.length && totalAllocated > budgetMin + 1e-6; i++) {
+            const entry = ordered[i];
+            if (entry.alloc <= 0) continue;
+            const reducibleSteps = Math.min(
+              Math.floor(entry.alloc / roundTo),
+              Math.floor((totalAllocated - budgetMin) / roundTo)
+            );
+            if (reducibleSteps > 0) {
+              const amount = reducibleSteps * roundTo;
+              entry.alloc -= amount;
+              totalAllocated -= amount;
+            }
+          }
+        }
+
+        entries.forEach(entry => {
+          const value = Math.max(0, entry.alloc);
+          allocations.set(entry.item.alvo, value);
+        });
+      }
+    }
+
+    const targets = limited.map(item => {
+      const allocRaw = allocations.has(item.alvo) ? allocations.get(item.alvo) : 0;
+      const allocSteps = roundTo > 0 ? Math.round(allocRaw / roundTo) : Math.round(allocRaw);
+      const alloc = Math.max(0, (roundTo > 0 ? allocSteps * roundTo : allocSteps));
+      const tempoVal = isFinite(item.tempoMedio) ? item.tempoMedio : 1;
+      const tempoMedioOut = Math.round(tempoVal * 100) / 100;
+      return {
+        alvo: item.alvo,
+        area: item.area,
+        subarea: item.subarea,
+        prioridade: item.prioridade,
+        S: item.S,
+        t: item.t,
+        tempoMedio: tempoMedioOut,
+        eviPerMin: useAdvanced ? item.eviPerMin : null,
+        eviLCBPerMin: useAdvanced ? item.eviLCBPerMin : null,
+        priPerMin: !useAdvanced ? item.priPerMin : null,
+        allocMin: alloc,
+        deltaRpp: alloc > 0 ? item.deltaRpp : 0,
+        feito: item.feito || '',
+        baseRecall: item.baseRecall !== undefined ? item.baseRecall : null,
+        score: item.score
+      };
+    });
+
+    const areaAgg = {};
+    let totalDelta = 0;
+    let totalAlloc = 0;
+    targets.forEach(target => {
+      const alloc = target.allocMin || 0;
+      if (alloc <= 0) return;
+      totalAlloc += alloc;
+      const delta = target.deltaRpp || 0;
+      totalDelta += delta;
+      const areaKey = target.area || 'Sem área';
+      if (!areaAgg[areaKey]) {
+        areaAgg[areaKey] = { area: areaKey, allocMin: 0, deltaRpp: 0 };
+      }
+      areaAgg[areaKey].allocMin += alloc;
+      areaAgg[areaKey].deltaRpp += delta;
+    });
+
+    const areas = Object.keys(areaAgg).map(key => ({
+      area: key,
+      allocMin: areaAgg[key].allocMin,
+      deltaRpp: areaAgg[key].deltaRpp
+    })).sort((a, b) => (b.allocMin || 0) - (a.allocMin || 0));
+
+    return {
+      ok: true,
+      mode: useAdvanced ? 'advanced' : 'classic',
+      budgetMin: budgetMin,
+      allocatedMin: totalAlloc,
+      totalDeltaRpp: totalDelta,
+      targets,
+      areas
+    };
   } catch (e) {
     return { ok: false, error: e.toString() };
   }

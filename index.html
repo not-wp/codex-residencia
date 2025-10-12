@@ -487,52 +487,160 @@
 
     .queue-row {
       position: relative;
-      transition: background 0.3s ease, transform 0.3s ease;
+      transition: background 0.25s ease;
       cursor: pointer;
     }
 
-    .queue-row.completed {
+    tr.done {
       background: rgba(34, 197, 94, 0.12);
-      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+      animation: rowSuccess 0.45s ease;
     }
 
-    .queue-row.completed td {
-      color: var(--success);
+    tr.done td {
+      color: var(--text-primary);
     }
 
-    .queue-row.bandit-selected {
-      background: rgba(59, 130, 246, 0.12);
-      box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.35);
+    @keyframes rowSuccess {
+      0% {
+        box-shadow: 0 0 0 rgba(34, 197, 94, 0);
+        transform: scale(1);
+      }
+      50% {
+        box-shadow: 0 0 12px rgba(34, 197, 94, 0.45);
+        transform: scale(1.01);
+      }
+      100% {
+        box-shadow: 0 0 0 rgba(34, 197, 94, 0);
+        transform: scale(1);
+      }
     }
 
-    .queue-row.bandit-selected.completed {
-      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+    .reviews-table {
+      table-layout: fixed;
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
     }
 
-    .queue-row.bandit-selected td {
-      border-bottom-color: rgba(59, 130, 246, 0.25);
+    .reviews-table th,
+    .reviews-table td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
     }
 
-    .bandit-tag {
-      display: none;
+    .reviews-table th {
+      font-size: 0.85rem;
+    }
+
+    .reviews-table tbody tr:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .reviews-table .col-alvo { width: 26%; }
+    .reviews-table .col-pri { width: 12%; }
+    .reviews-table .col-s { width: 9%; }
+    .reviews-table .col-t { width: 9%; }
+    .reviews-table .col-evi { width: 14%; }
+    .reviews-table .col-alloc { width: 14%; }
+    .reviews-table .col-delta { width: 10%; }
+    .reviews-table .col-status { width: 12%; text-align: center; }
+
+    .status-cell {
+      text-align: center;
+    }
+
+    .status-toggle {
+      display: inline-flex;
       align-items: center;
       gap: 6px;
-      background: rgba(59, 130, 246, 0.2);
+      justify-content: center;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+
+    .status-toggle input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: var(--success);
+    }
+
+    tr.done .status-toggle span {
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    .planner-panel {
+      background: rgba(59, 130, 246, 0.08);
+      border: 1px dashed rgba(59, 130, 246, 0.35);
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .planner-panel.disabled {
+      opacity: 0.6;
+      border-style: solid;
+    }
+
+    .planner-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .planner-input-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .planner-input-row input {
+      flex: 1 1 160px;
+      min-width: 140px;
+    }
+
+    .planner-total {
+      font-weight: 600;
       color: var(--accent);
+      background: rgba(59, 130, 246, 0.15);
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .planner-total .remaining {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+    .planner-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .planner-chip {
+      background: rgba(148, 163, 184, 0.15);
+      color: var(--text-secondary);
       padding: 6px 10px;
       border-radius: 999px;
       font-size: 0.8rem;
-      margin-top: 6px;
+      font-weight: 500;
     }
 
-    .queue-row.bandit-selected .bandit-tag {
-      display: inline-flex;
-    }
-
-    .status-controls {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+    .planner-chip strong {
+      color: var(--text-primary);
     }
 
     .queue-header {
@@ -542,35 +650,6 @@
       margin-bottom: 20px;
       gap: 16px;
       flex-wrap: wrap;
-    }
-
-    .bandit-controls {
-      background: rgba(59, 130, 246, 0.08);
-      border: 1px dashed rgba(59, 130, 246, 0.35);
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 18px;
-    }
-
-    .bandit-controls.disabled {
-      opacity: 0.6;
-      border-style: solid;
-    }
-
-    .bandit-control-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .bandit-control-row input {
-      flex: 1 1 160px;
-      min-width: 140px;
-    }
-
-    .bandit-controls .helper-text {
-      margin-top: 10px;
     }
 
     .policy-badges {
@@ -1066,33 +1145,40 @@
             <div class="policy-badges">
               <span id="policyBadge" class="policy-badge">Modo: —</span>
               <span id="policyEvi" class="policy-subtext">EVI médio: —</span>
-              <span id="banditInfo" class="policy-subtext">Planejamento: —</span>
             </div>
           </div>
           <button class="btn btn-secondary" onclick="gerarFilaHoje()">🔄 Gerar Fila</button>
         </div>
-        <div id="banditControls" class="bandit-controls">
-          <label for="banditBudget">Minutos disponíveis nesta sessão</label>
-          <div class="bandit-control-row">
-            <input type="number" id="banditBudget" min="1" step="1" placeholder="Ex: 45">
-            <button type="button" id="banditRunButton" class="btn btn-secondary" onclick="planejarBandit()">🎯 Planejar com Bandit</button>
+        <div id="plannerPanel" class="planner-panel">
+          <div class="planner-top">
+            <div class="planner-input">
+              <label for="plannerBudget">Orçamento do dia (min)</label>
+              <div class="planner-input-row">
+                <input type="number" id="plannerBudget" min="0" step="5" value="90" placeholder="Ex: 90">
+                <button type="button" id="plannerRunButton" class="btn btn-secondary" onclick="calcularPlano()">🧮 Calcular plano</button>
+              </div>
+            </div>
+            <div id="plannerTotalBadge" class="planner-total">Total: —</div>
           </div>
-          <p id="banditHelper" class="helper-text">Informe quantos minutos você tem e clique em “Planejar” para destacar as revisões que cabem no tempo disponível.</p>
+          <div id="plannerChips" class="planner-chips"></div>
+          <p id="plannerHelper" class="helper-text">Informe seu orçamento em minutos para distribuir o tempo proporcionalmente ao ganho esperado.</p>
         </div>
         <div style="overflow-x: auto;">
-          <table id="filaTable">
+          <table id="filaTable" class="reviews-table">
             <thead>
               <tr>
-                <th>Alvo</th>
-                <th>Prioridade</th>
-                <th>Próxima Revisão</th>
-                <th>Estabilidade (dias)</th>
-                <th>Diagnóstico</th>
-                <th>Status</th>
+                <th class="col-alvo">Alvo</th>
+                <th class="col-pri">Pri</th>
+                <th class="col-s">S</th>
+                <th class="col-t">t (dias)</th>
+                <th class="col-evi" id="colEviHeader">EVI/min</th>
+                <th class="col-alloc">Alocação</th>
+                <th class="col-delta">ΔR (%)</th>
+                <th class="col-status">Status</th>
               </tr>
             </thead>
             <tbody id="filaBody">
-              <tr><td colspan="6" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
+              <tr><td colspan="8" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
             </tbody>
           </table>
         </div>
@@ -1375,6 +1461,10 @@
             <label>Mix Ganho Planejado</label>
             <input type="number" id="setPlanGainMix" step="0.05" min="0" max="1">
           </div>
+          <div class="form-group">
+            <label>κ (Pri → ΔR%)</label>
+            <input type="number" id="setKappaPriDelta" step="0.05" min="0">
+          </div>
         </div>
         <div class="flag-grid">
           <label class="flag-toggle">
@@ -1440,8 +1530,9 @@
     let currentSettings = {};
     let reviewQueue = [];
     let calendarCache = [];
-    let banditSelection = new Set();
-    let banditMetrics = new Map();
+    let plannerAllocations = new Map();
+    let plannerAreas = [];
+    let plannerSummary = { budget: 0, allocated: 0, delta: 0, mode: 'classic' };
 
     const alvoSuggestionSet = new Set();
     const areaSuggestionSet = new Set();
@@ -1571,39 +1662,101 @@
       if (updated) refreshAutocompleteLists();
     }
 
-    function setBanditInfoText(budget, total) {
-      const banditInfoEl = document.getElementById('banditInfo');
-      if (!banditInfoEl) return;
-      const budgetNum = Number(budget);
-      const totalNum = Number(total);
-      if (!isNaN(budgetNum) && !isNaN(totalNum)) {
-        banditInfoEl.textContent = `Planejamento: ${budgetNum.toFixed(1)} min de ${totalNum.toFixed(1)} min`;
-      } else if (!isNaN(budgetNum)) {
-        banditInfoEl.textContent = `Planejamento: ${budgetNum.toFixed(1)} min`;
-      } else {
-        banditInfoEl.textContent = 'Planejamento: —';
+    function computePlannerRemaining() {
+      let remainingAlloc = 0;
+      let remainingDelta = 0;
+      const doneSet = new Set((reviewQueue || []).filter(item => item && item.__done).map(item => item.alvo));
+      plannerAllocations.forEach(target => {
+        if (!target || doneSet.has(target.alvo)) return;
+        const alloc = Number(target.allocMin) || 0;
+        const delta = Number(target.deltaRpp) || 0;
+        remainingAlloc += alloc;
+        remainingDelta += delta;
+      });
+      return { allocated: remainingAlloc, delta: remainingDelta };
+    }
+
+    function resetPlannerState(clearSummary = true) {
+      plannerAllocations = new Map();
+      plannerAreas = [];
+      const mode = toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic';
+      plannerSummary = { budget: 0, allocated: 0, delta: 0, mode };
+      if (clearSummary) {
+        updatePlannerSummaryUI();
       }
     }
 
-    function atualizarBanditControls() {
-      const controls = document.getElementById('banditControls');
-      const helper = document.getElementById('banditHelper');
-      const button = document.getElementById('banditRunButton');
-      const enabled = toBool((currentSettings || {}).useAdvancedPriority) && toBool((currentSettings || {}).useBanditPlanner);
-      if (controls) {
-        controls.classList.toggle('disabled', !enabled);
+    function updatePlannerSummaryUI() {
+      const totalEl = document.getElementById('plannerTotalBadge');
+      const chipsEl = document.getElementById('plannerChips');
+      const headerEl = document.getElementById('colEviHeader');
+      const helperEl = document.getElementById('plannerHelper');
+      const plannerMode = plannerSummary.mode || (toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic');
+      if (headerEl) {
+        headerEl.textContent = plannerMode === 'advanced' ? 'EVI/min' : 'Pri/min';
+      }
+      if (helperEl) {
+        const enabled = toBool((currentSettings || {}).useBanditPlanner);
+        helperEl.textContent = enabled
+          ? 'Informe seu orçamento em minutos para distribuir o tempo proporcionalmente ao ganho esperado.'
+          : 'Ative “Planejador bandit” em Ajustes para usar a alocação automática.';
+      }
+      if (totalEl) {
+        if (plannerSummary.allocated > 0) {
+          const totalText = `Total: ${plannerSummary.allocated.toFixed(0)} min → +${plannerSummary.delta.toFixed(1)}%`;
+          const remaining = computePlannerRemaining();
+          if (remaining.allocated >= 0 && remaining.allocated < plannerSummary.allocated) {
+            totalEl.innerHTML = `${totalText} <span class="remaining">Restam ${remaining.allocated.toFixed(0)} min → +${remaining.delta.toFixed(1)}%</span>`;
+          } else {
+            totalEl.textContent = totalText;
+          }
+        } else {
+          totalEl.textContent = 'Total: —';
+        }
+      }
+      if (chipsEl) {
+        chipsEl.innerHTML = '';
+        if (!plannerAreas || plannerAreas.length === 0) {
+          const chip = document.createElement('span');
+          chip.className = 'planner-chip';
+          if (plannerAllocations.size > 0 && plannerSummary.allocated === 0) {
+            chip.textContent = 'Nenhuma alocação no orçamento atual.';
+          } else {
+            chip.textContent = 'Nenhum plano calculado ainda.';
+          }
+          chipsEl.appendChild(chip);
+        } else {
+          plannerAreas.forEach(area => {
+            const chip = document.createElement('span');
+            chip.className = 'planner-chip';
+            const allocVal = Number(area.allocMin) || 0;
+            const deltaVal = Number(area.deltaRpp) || 0;
+            chip.textContent = `${area.area || '—'}: ${allocVal.toFixed(0)} min (+${deltaVal.toFixed(1)}%)`;
+            chipsEl.appendChild(chip);
+          });
+        }
+      }
+    }
+
+    function updatePlannerControls() {
+      const panel = document.getElementById('plannerPanel');
+      const button = document.getElementById('plannerRunButton');
+      const enabled = toBool((currentSettings || {}).useBanditPlanner);
+      const defaultMode = toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic';
+      if (plannerAllocations.size === 0 && plannerSummary.allocated === 0) {
+        plannerSummary.mode = defaultMode;
+      }
+      if (panel) {
+        panel.classList.toggle('disabled', !enabled);
       }
       if (button) {
         button.disabled = !enabled;
       }
-      if (helper) {
-        helper.textContent = enabled
-          ? 'Informe quantos minutos você tem e clique em “Planejar” para destacar as revisões que cabem no tempo disponível.'
-          : 'Ative “Prioridade avançada (EVI)” e “Planejador bandit” em Ajustes para liberar esta etapa.';
-      }
+      updatePlannerSummaryUI();
     }
 
-    atualizarBanditControls();
+    resetPlannerState();
+    updatePlannerControls();
 
     // ========================================================================
     // DASHBOARD: PAINEL LATERAL DE DETALHES
@@ -1761,7 +1914,7 @@
           currentSettings = settings;
           document.getElementById('kpiMetaAtual').textContent =
             (settings.retentionTarget * 100).toFixed(0) + '%';
-          atualizarBanditControls();
+          updatePlannerControls();
         })
         .withFailureHandler(handleError)
         .apiGetSettings();
@@ -2110,9 +2263,8 @@
       google.script.run
         .withSuccessHandler(function(result) {
           if (result && result.ok) {
-            reviewQueue = result.data || [];
-            banditSelection = new Set();
-            banditMetrics = new Map();
+            reviewQueue = (result.data || []).map(normalizeQueueItem);
+            resetPlannerState();
             renderFilaRevisoes(reviewQueue);
             addSuggestionsFromQueue(reviewQueue);
             if (typeof result.count === 'number') {
@@ -2139,7 +2291,7 @@
           setLoading(false);
           toast('Tempo esgotado ao gerar fila. Tente novamente.', 'warning');
           document.getElementById('filaBody').innerHTML =
-            '<tr><td colspan="6" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
+            '<tr><td colspan="8" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
         }, 15000);
       }
 
@@ -2149,9 +2301,8 @@
           if (!silent) setLoading(false);
 
           if (result && result.ok) {
-            reviewQueue = result.data || [];
-            banditSelection = new Set();
-            banditMetrics = new Map();
+            reviewQueue = (result.data || []).map(normalizeQueueItem);
+            resetPlannerState();
             renderFilaRevisoes(reviewQueue);
             addSuggestionsFromQueue(reviewQueue);
 
@@ -2170,6 +2321,10 @@
               }
             }
 
+            const policyMode = policyVersion.indexOf('advanced') === 0 ? 'advanced' : 'classic';
+            plannerSummary.mode = policyMode;
+            updatePlannerSummaryUI();
+
             const eviInfoEl = document.getElementById('policyEvi');
             if (eviInfoEl) {
               const eviValues = (reviewQueue || [])
@@ -2183,12 +2338,6 @@
               }
             }
 
-            if (result.bandit) {
-              setBanditInfoText(result.bandit.budget, result.bandit.totalCost);
-            } else {
-              setBanditInfoText();
-            }
-
             if (!silent) {
               if (count === 0) {
                 toast('✓ Nenhuma revisão vencida hoje. Próximas revisões em breve!', 'success');
@@ -2199,7 +2348,7 @@
           } else if (!silent) {
             toast('Erro: ' + (result ? result.error : 'Sem resposta'), 'error');
             document.getElementById('filaBody').innerHTML =
-              '<tr><td colspan="6" class="empty-state">Erro ao gerar fila.</td></tr>';
+              '<tr><td colspan="8" class="empty-state">Erro ao gerar fila.</td></tr>';
           }
         })
         .withFailureHandler(function(error) {
@@ -2208,7 +2357,7 @@
             setLoading(false);
             toast('Erro: ' + error.message, 'error');
           document.getElementById('filaBody').innerHTML =
-            '<tr><td colspan="6" class="empty-state">Erro de conexão.</td></tr>';
+            '<tr><td colspan="8" class="empty-state">Erro de conexão.</td></tr>';
           } else {
             console.warn('Erro ao gerar fila:', error);
           }
@@ -2216,35 +2365,43 @@
         .apiMakeReviewToday();
     }
 
-    function planejarBandit() {
-      const enabled = toBool((currentSettings || {}).useAdvancedPriority) && toBool((currentSettings || {}).useBanditPlanner);
+    function calcularPlano() {
+      const enabled = toBool((currentSettings || {}).useBanditPlanner);
       if (!enabled) {
-        toast('Ative “Prioridade avançada (EVI)” e “Planejador bandit” em Ajustes para usar esta etapa.', 'info');
+        toast('Ative “Planejador bandit” em Ajustes para usar esta etapa.', 'info');
         return;
       }
 
       if (!Array.isArray(reviewQueue) || reviewQueue.length === 0) {
-        toast('Gere a fila de revisões antes de rodar o planejador.', 'warning');
+        toast('Gere a fila de revisões antes de calcular o plano.', 'warning');
         return;
       }
 
-      const budgetInput = document.getElementById('banditBudget');
-      const runButton = document.getElementById('banditRunButton');
+      const budgetInput = document.getElementById('plannerBudget');
+      const runButton = document.getElementById('plannerRunButton');
       if (!budgetInput) {
         toast('Campo de orçamento não encontrado.', 'error');
         return;
       }
 
-      const rawValue = budgetInput.value.trim().replace(',', '.');
+      const rawValue = (budgetInput.value || '').toString().trim().replace(',', '.');
       const budget = parseFloat(rawValue);
       if (isNaN(budget) || budget <= 0) {
         toast('Informe um orçamento em minutos maior que zero.', 'warning');
         return;
       }
 
-      budgetInput.value = budget.toFixed(1);
+      budgetInput.value = Math.round(budget).toString();
       if (runButton) runButton.disabled = true;
       setLoading(true);
+
+      const params = {
+        budgetMin: budget,
+        useReviewHoje: true,
+        minPriority: 0,
+        maxTargets: Math.min(12, reviewQueue.length),
+        roundTo: 5
+      };
 
       google.script.run
         .withSuccessHandler(function(result) {
@@ -2257,7 +2414,7 @@
           }
 
           if (result.disabled) {
-            toast('O planejador bandit está desativado nas Ajustes.', 'info');
+            toast('O planejador está desativado nas Ajustes.', 'info');
             return;
           }
 
@@ -2266,151 +2423,151 @@
             return;
           }
 
-          const selected = Array.isArray(result.selected) ? result.selected : [];
-          banditSelection = new Set();
-          banditMetrics = new Map();
-          selected.forEach(sel => {
-            if (!sel || !sel.alvo) return;
-            banditSelection.add(sel.alvo);
-            banditMetrics.set(sel.alvo, {
-              cost: sel.custoMin !== undefined ? Number(sel.custoMin) : NaN,
-              gain: sel.ganhoLCB !== undefined ? Number(sel.ganhoLCB) : NaN,
-              ratio: sel.ratio !== undefined ? Number(sel.ratio) : NaN
-            });
+          plannerAllocations = new Map();
+          (result.targets || []).forEach(target => {
+            if (!target || !target.alvo) return;
+            plannerAllocations.set(target.alvo, target);
           });
+          plannerAreas = Array.isArray(result.areas) ? result.areas : [];
+          const allocated = Number(result.allocatedMin);
+          const delta = Number(result.totalDeltaRpp);
+          plannerSummary = {
+            budget: Number(result.budgetMin) || budget,
+            allocated: isNaN(allocated) ? 0 : Math.max(0, Math.round(allocated)),
+            delta: isNaN(delta) ? 0 : delta,
+            mode: result.mode || (toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic')
+          };
 
-          setBanditInfoText(result.budget, result.totalCost);
-
-          if (selected.length > 0) {
-            toast(`Planejador selecionou ${selected.length} alvo(s) prioritário(s).`, 'success');
-          } else {
-            toast('Nenhum alvo cabia no orçamento informado. Ajuste os minutos e tente novamente.', 'warning');
-          }
-
+          updatePlannerSummaryUI();
           renderFilaRevisoes(reviewQueue || []);
+
+          if (plannerAllocations.size > 0 && plannerSummary.allocated > 0) {
+            toast(`Plano gerado para ${plannerAllocations.size} alvo(s).`, 'success');
+          } else {
+            toast('Plano calculado, mas nenhuma alocação recebeu tempo. Ajuste o orçamento e tente novamente.', 'warning');
+          }
         })
         .withFailureHandler(function(error) {
           if (runButton) runButton.disabled = false;
           setLoading(false);
-          toast('Erro ao planejar: ' + (error.message || error.toString()), 'error');
+          toast('Erro ao planejar: ' + (error && error.message ? error.message : error), 'error');
         })
-        .apiEffortPlanner(budget);
+        .apiPlanDayBudget(params);
+    }
+
+    function normalizeQueueItem(item) {
+      if (!item) return item;
+      const doneFlag = item.feito !== undefined && item.feito !== null && `${item.feito}`.trim() !== '' && `${item.feito}` !== '0';
+      item.__done = doneFlag;
+      return item;
     }
 
     function renderFilaRevisoes(queue) {
       const tbody = document.getElementById('filaBody');
       tbody.innerHTML = '';
 
-      if (queue.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhuma revisão pendente hoje</td></tr>';
+      if (!Array.isArray(queue) || queue.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="empty-state">Nenhuma revisão pendente hoje</td></tr>';
         return;
       }
 
+      const mode = plannerSummary.mode || (toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
       queue.forEach(item => {
+        if (!item) return;
         const row = document.createElement('tr');
         row.classList.add('queue-row');
 
-        const dateStr = formatShortDate(item.proximaRevisao) || item.proximaRevisao || '—';
-        const prioridadeVal = (Number(item.prioridade) || 0).toFixed(3);
-        const eviVal = item.eviPerMin !== null && item.eviPerMin !== undefined && !isNaN(Number(item.eviPerMin))
-          ? Number(item.eviPerMin)
-          : null;
-        const eviText = eviVal !== null ? `EVI/min ${eviVal.toFixed(3)}` : 'EVI/min —';
-        const costVal = item.costMinutes && !isNaN(Number(item.costMinutes)) ? Number(item.costMinutes) : null;
-        const costText = costVal !== null ? `Tempo ${costVal.toFixed(1)} min` : null;
-        const overdueText = item.overdue !== undefined && item.overdue !== null && !isNaN(Number(item.overdue))
-          ? `Overdue ${(Number(item.overdue)).toFixed(2)}`
-          : '';
-        const diag = item.diagnostics || {};
-        const sigma = diag && diag.sigma !== undefined && diag.sigma !== '' && !isNaN(Number(diag.sigma))
-          ? Number(diag.sigma)
-          : null;
-        const nEff = diag && diag.n_eff !== undefined && diag.n_eff !== '' && !isNaN(Number(diag.n_eff))
-          ? Number(diag.n_eff)
-          : null;
-        const diagText = sigma !== null || nEff !== null
-          ? `σ ${sigma !== null ? sigma.toFixed(3) : '—'} · n_eff ${nEff !== null ? nEff.toFixed(1) : '—'}`
-          : '—';
-        const diversityValue = item.diversity !== undefined && item.diversity !== null && !isNaN(Number(item.diversity))
-          ? Number(item.diversity)
-          : null;
-        const diversityText = diversityValue !== null && Math.abs(diversityValue) > 1e-4
-          ? `Diversidade ${diversityValue >= 0 ? '+' : ''}${diversityValue.toFixed(3)}`
-          : '';
+        const prioridadeVal = Number(item.prioridade) || 0;
+        const prioridadeText = prioridadeVal.toFixed(3);
+        const estabilidadeVal = Number(item.estabilidade) || 0;
+        const estabilidadeText = estabilidadeVal.toFixed(1);
 
-        const infoTokens = [eviText];
-        if (costText) infoTokens.push(costText);
-        if (overdueText) infoTokens.push(overdueText);
-        if (diversityText) infoTokens.push(diversityText);
-        if (banditSelection.has(item.alvo)) infoTokens.push('🎯 Planejado');
+        let atrasoDias = item.atrasoDias !== undefined ? Number(item.atrasoDias) : NaN;
+        if ((!isFinite(atrasoDias) || atrasoDias === null) && plannerAllocations.has(item.alvo)) {
+          const planInfo = plannerAllocations.get(item.alvo);
+          if (planInfo && planInfo.t !== undefined) {
+            atrasoDias = Number(planInfo.t);
+          }
+        }
+        if (!isFinite(atrasoDias)) {
+          const proxima = parseAppDate(item.proximaRevisao);
+          if (proxima instanceof Date && !isNaN(proxima)) {
+            atrasoDias = Math.max(0, Math.round((today - proxima) / (1000 * 60 * 60 * 24)));
+          }
+        }
+        const atrasoText = isFinite(atrasoDias) ? atrasoDias.toFixed(0) : '—';
+
+        const planInfo = plannerAllocations.get(item.alvo) || null;
+        let metricValue = null;
+        if (mode === 'advanced') {
+          if (planInfo && planInfo.eviPerMin !== undefined && planInfo.eviPerMin !== null) {
+            metricValue = Number(planInfo.eviPerMin);
+          } else if (planInfo && planInfo.eviLCBPerMin !== undefined) {
+            metricValue = Number(planInfo.eviLCBPerMin);
+          } else if (item.eviPerMinMean !== undefined && item.eviPerMinMean !== null) {
+            metricValue = Number(item.eviPerMinMean);
+          } else if (item.eviPerMin !== undefined && item.eviPerMin !== null) {
+            metricValue = Number(item.eviPerMin);
+          }
+        } else {
+          if (planInfo && planInfo.priPerMin !== undefined && planInfo.priPerMin !== null) {
+            metricValue = Number(planInfo.priPerMin);
+          } else {
+            const tempoBase = planInfo && planInfo.tempoMedio !== undefined
+              ? Number(planInfo.tempoMedio)
+              : (item.tempoPrevMin !== undefined ? Number(item.tempoPrevMin) : 1);
+            const tempoNorm = Math.max(1, isFinite(tempoBase) ? tempoBase : 1);
+            metricValue = prioridadeVal / tempoNorm;
+          }
+        }
+        const metricText = metricValue !== null && isFinite(metricValue)
+          ? `${mode === 'advanced' ? 'EVI/min' : 'Pri/min'} ${metricValue.toFixed(3)}`
+          : mode === 'advanced' ? 'EVI/min —' : 'Pri/min —';
+
+        const allocVal = planInfo && planInfo.allocMin !== undefined ? Number(planInfo.allocMin) : 0;
+        const allocText = allocVal > 0 ? `${allocVal.toFixed(0)} min` : '—';
+
+        const deltaVal = planInfo && planInfo.deltaRpp !== undefined ? Number(planInfo.deltaRpp) : 0;
+        const deltaText = deltaVal > 0 ? `+${deltaVal.toFixed(1)}%` : '—';
+
+        const done = !!item.__done;
+        if (done) {
+          row.classList.add('done');
+        }
 
         row.innerHTML = `
           <td>${item.alvo}</td>
-          <td>
-            <div class="pri-main">${prioridadeVal}</div>
-            <div class="pri-sub">${infoTokens.join(' · ')}</div>
-          </td>
-          <td>${dateStr}</td>
-          <td>${(Number(item.estabilidade) || 0).toFixed(1)}</td>
-          <td><span class="diag-chip">${diagText}</span></td>
-          <td class="fila-status">
-            <div class="status-controls">
-              <button type="button" class="btn-check">✅ Marcar</button>
-              <span class="victory-check">✓</span>
-            </div>
-            <span class="bandit-tag" hidden>🎯 Planejado</span>
+          <td>${prioridadeText}</td>
+          <td>${estabilidadeText}</td>
+          <td>${atrasoText}</td>
+          <td>${metricText}</td>
+          <td>${allocText}</td>
+          <td>${deltaText}</td>
+          <td class="status-cell">
+            <label class="status-toggle">
+              <input type="checkbox" ${done ? 'checked' : ''}>
+              <span>Feito</span>
+            </label>
           </td>
         `;
 
-        const statusCell = row.querySelector('.fila-status');
-        const checkBtn = statusCell ? statusCell.querySelector('button') : null;
-        const victory = statusCell ? statusCell.querySelector('.victory-check') : null;
-        const banditTag = statusCell ? statusCell.querySelector('.bandit-tag') : null;
-
-        if (banditSelection.has(item.alvo)) {
-          row.classList.add('bandit-selected');
-          const metrics = banditMetrics.get(item.alvo) || {};
-          if (banditTag) {
-            let label = '🎯 Planejado';
-            if (!isNaN(Number(metrics.cost))) {
-              label = `🎯 ${Number(metrics.cost).toFixed(1)} min`;
-            } else if (!isNaN(Number(metrics.gain))) {
-              label = `🎯 Δ ${(Number(metrics.gain)).toFixed(3)}`;
-            } else if (!isNaN(Number(metrics.ratio))) {
-              label = `🎯 ROI ${(Number(metrics.ratio)).toFixed(2)}`;
-            }
-            banditTag.textContent = label;
-            banditTag.hidden = false;
-          }
-        } else {
-          if (banditTag) {
-            banditTag.hidden = true;
-          }
-        }
-
-        const alreadyDone = item.feito !== undefined && item.feito !== null && `${item.feito}`.trim() !== '' && `${item.feito}` !== '0';
-
-        if (alreadyDone) {
-          row.classList.add('completed');
-          if (checkBtn) {
-            checkBtn.disabled = true;
-            checkBtn.textContent = '✅ Concluído';
-          }
-          if (victory) {
-            victory.style.opacity = '1';
-          }
-        }
-
-        if (checkBtn) {
-          checkBtn.addEventListener('click', function(event) {
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+          checkbox.addEventListener('click', function(event) {
             event.stopPropagation();
-            marcarItemEstudado(row, checkBtn, victory, item);
+          });
+          checkbox.addEventListener('change', function(event) {
+            event.stopPropagation();
+            toggleItemFeito(item, row, checkbox.checked);
           });
         }
 
         row.addEventListener('click', function() {
           document.getElementById('revisaoAlvo').value = item.alvo;
-          if (item.alvo.includes('::')) {
+          if (item.alvo && item.alvo.includes('::')) {
             const [area, subarea] = item.alvo.split('::');
             document.getElementById('revisaoArea').value = area || '';
             document.getElementById('revisaoSubarea').value = subarea || '';
@@ -2421,32 +2578,17 @@
       });
     }
 
-    function marcarItemEstudado(row, button, badge, item) {
-      if (!row || row.classList.contains('completed')) {
-        return;
+    function toggleItemFeito(item, row, checked) {
+      if (!item || !row) return;
+      item.__done = checked;
+      item.feito = checked ? 1 : '';
+      row.classList.toggle('done', checked);
+      updatePlannerSummaryUI();
+      if (checked) {
+        toast(`✓ ${item.alvo} marcado como estudado!`, 'success');
+      } else {
+        toast(`Revisão de ${item.alvo} desmarcada.`, 'info');
       }
-
-      row.classList.add('completed');
-      if (button) {
-        button.disabled = true;
-        button.textContent = '✅ Concluído';
-      }
-
-      if (badge) {
-        badge.style.opacity = '1';
-      }
-
-      item.feito = 1;
-      if (banditSelection.has(item.alvo)) {
-        banditSelection.delete(item.alvo);
-        banditMetrics.delete(item.alvo);
-      }
-      if (row) {
-        row.classList.remove('bandit-selected');
-        const tag = row.querySelector('.bandit-tag');
-        if (tag) tag.hidden = true;
-      }
-      toast(`✓ ${item.alvo} marcado como estudado!`, 'success');
     }
 
 
@@ -2552,7 +2694,7 @@
         .withSuccessHandler(function(settings) {
           currentSettings = settings;
           preencherFormAjustes(settings);
-          atualizarBanditControls();
+          updatePlannerControls();
           setLoading(false);
         })
         .withFailureHandler(function(error) {
@@ -2581,6 +2723,8 @@
       document.getElementById('setShrinkageC').value = settings.shrinkageC || 8.0;
       document.getElementById('setLambdaDiv').value = settings.lambdaDiversity || 0;
       document.getElementById('setPlanGainMix').value = settings.planGainMix || 0.5;
+      document.getElementById('setKappaPriDelta').value =
+        settings.kappaPriToDelta !== undefined ? settings.kappaPriToDelta : 0.2;
       document.getElementById('setUseAdvancedPriority').checked = toBool(settings.useAdvancedPriority);
       document.getElementById('setUseGainLCB').checked = toBool(settings.useGainLCB);
       document.getElementById('setUseRLSKalman').checked = toBool(settings.useRLSKalman);
@@ -2610,6 +2754,7 @@
         shrinkageC: parseFloat(document.getElementById('setShrinkageC').value),
         lambdaDiversity: parseFloat(document.getElementById('setLambdaDiv').value),
         planGainMix: parseFloat(document.getElementById('setPlanGainMix').value),
+        kappaPriToDelta: parseFloat(document.getElementById('setKappaPriDelta').value),
         useAdvancedPriority: document.getElementById('setUseAdvancedPriority').checked,
         useGainLCB: document.getElementById('setUseGainLCB').checked,
         useRLSKalman: document.getElementById('setUseRLSKalman').checked,
@@ -2625,7 +2770,7 @@
           if (result.ok) {
             toast('Ajustes salvos com sucesso!', 'success');
             currentSettings = Object.assign({}, settings);
-            atualizarBanditControls();
+            updatePlannerControls();
           } else {
             toast('Erro ao salvar: ' + result.error, 'error');
           }
