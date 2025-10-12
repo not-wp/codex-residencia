@@ -387,6 +387,66 @@
       color: var(--success);
     }
 
+    .queue-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .policy-badges {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+
+    .policy-badge {
+      background: rgba(99, 102, 241, 0.18);
+      color: #a5b4fc;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .policy-badge.advanced {
+      background: rgba(16, 185, 129, 0.18);
+      color: #6ee7b7;
+    }
+
+    .policy-subtext {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .pri-main {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .pri-sub {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-top: 2px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .diag-chip {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(14, 165, 233, 0.12);
+      color: #38bdf8;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
     .btn-check {
       background: rgba(148, 163, 184, 0.15);
       color: var(--text-secondary);
@@ -631,6 +691,37 @@
       height: 18px;
     }
 
+    .priority-modes {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin-top: 16px;
+    }
+
+    .mode-card {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .mode-card h3 {
+      color: var(--accent);
+      font-size: 1.1rem;
+    }
+
+    .mode-card ul {
+      margin-left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
     /* Empty State */
     .empty-state {
       text-align: center;
@@ -792,8 +883,15 @@
     <!-- REVISÕES -->
     <div id="revisoes" class="page">
       <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-          <h2>Fila de Revisões de Hoje</h2>
+        <div class="queue-header">
+          <div>
+            <h2>Fila de Revisões de Hoje</h2>
+            <div class="policy-badges">
+              <span id="policyBadge" class="policy-badge">Modo: —</span>
+              <span id="policyEvi" class="policy-subtext">EVI médio: —</span>
+              <span id="banditInfo" class="policy-subtext">Planejamento: —</span>
+            </div>
+          </div>
           <button class="btn btn-secondary" onclick="gerarFilaHoje()">🔄 Gerar Fila</button>
         </div>
         <div style="overflow-x: auto;">
@@ -804,11 +902,12 @@
                 <th>Prioridade</th>
                 <th>Próxima Revisão</th>
                 <th>Estabilidade (dias)</th>
+                <th>Diagnóstico</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody id="filaBody">
-              <tr><td colspan="5" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
+              <tr><td colspan="6" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
             </tbody>
           </table>
         </div>
@@ -920,6 +1019,35 @@
             Se sua taxa de acerto nos últimos 7 dias for menor que 50%, o sistema reduz parcialmente
             a estabilidade antes de calcular o próximo intervalo, evitando sobrecarga.
           </p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Modos de Prioridade</h2>
+        <p class="helper-text">Compare as duas abordagens disponíveis antes de ligar os flags nas configurações.</p>
+        <div class="priority-modes">
+          <div class="mode-card">
+            <h3>Clássico</h3>
+            <p>
+              Baseado na curva exponencial <strong>R(t) = e<sup>-t/S</sup></strong>, com intervalo ótimo <strong>I = -S·ln(meta)</strong>.
+            </p>
+            <ul>
+              <li>Prioridade = (1 - R(t)) + w<sub>Peg</sub>·peg + w<sub>Tempo</sub>·tempo<sub>rel</sub> + w<sub>Dif</sub>·dif<sub>norm</sub> + overdue.</li>
+              <li>Overdue linear: <strong>alpha · min(1.5, atraso/S)</strong> ou modo softplus.</li>
+              <li>Ideal quando você quer o comportamento tradicional e previsível.</li>
+            </ul>
+          </div>
+          <div class="mode-card">
+            <h3>Avançado (EVI)</h3>
+            <p>
+              Estima o ganho esperado de informação: <strong>ΔR ≈ ∂R/∂S|<sub>t=T</sub> · E[ΔS]</strong> e converte em valor por minuto.
+            </p>
+            <ul>
+              <li>EVI/min = (ΔR / tempo) e <strong>EVI<sub>LCB</sub> = E[EVI] - β · sd(EVI)</strong> quando LCB está ativo.</li>
+              <li>Somatório final: EVI/min + overdue + custos + diversidade (quando habilitado).</li>
+              <li>Compatível com RLS/Kalman, curva Weibull por área e planejador bandit.</li>
+            </ul>
+          </div>
         </div>
       </div>
 
@@ -1726,7 +1854,7 @@
           setLoading(false);
           toast('Tempo esgotado ao gerar fila. Tente novamente.', 'warning');
           document.getElementById('filaBody').innerHTML =
-            '<tr><td colspan="5" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
+            '<tr><td colspan="6" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
         }, 15000);
       }
 
@@ -1743,6 +1871,42 @@
             const count = result.count || 0;
             document.getElementById('kpiRevisoesHoje').textContent = count;
 
+            const badgeEl = document.getElementById('policyBadge');
+            const policyVersion = result.policyVersion || '';
+            if (badgeEl) {
+              const advanced = policyVersion.indexOf('advanced') === 0;
+              badgeEl.textContent = advanced ? 'Modo: EVI avançado' : 'Modo: clássico';
+              if (advanced) {
+                badgeEl.classList.add('advanced');
+              } else {
+                badgeEl.classList.remove('advanced');
+              }
+            }
+
+            const eviInfoEl = document.getElementById('policyEvi');
+            if (eviInfoEl) {
+              const eviValues = (reviewQueue || [])
+                .map(item => (item.eviPerMin !== undefined && item.eviPerMin !== null ? Number(item.eviPerMin) : NaN))
+                .filter(val => !isNaN(val));
+              if (eviValues.length > 0) {
+                const avgEvi = eviValues.reduce((sum, val) => sum + val, 0) / eviValues.length;
+                eviInfoEl.textContent = `EVI médio: ${avgEvi.toFixed(3)}`;
+              } else {
+                eviInfoEl.textContent = 'EVI médio: —';
+              }
+            }
+
+            const banditInfoEl = document.getElementById('banditInfo');
+            if (banditInfoEl) {
+              if (result.bandit && result.bandit.budget !== undefined) {
+                const budget = Number(result.bandit.budget) || 0;
+                const total = Number(result.bandit.totalCost) || 0;
+                banditInfoEl.textContent = `Planejamento: ${budget.toFixed(1)} min de ${total.toFixed(1)} min`;
+              } else {
+                banditInfoEl.textContent = 'Planejamento: —';
+              }
+            }
+
             if (!silent) {
               if (count === 0) {
                 toast('✓ Nenhuma revisão vencida hoje. Próximas revisões em breve!', 'success');
@@ -1753,7 +1917,7 @@
           } else if (!silent) {
             toast('Erro: ' + (result ? result.error : 'Sem resposta'), 'error');
             document.getElementById('filaBody').innerHTML =
-              '<tr><td colspan="5" class="empty-state">Erro ao gerar fila.</td></tr>';
+              '<tr><td colspan="6" class="empty-state">Erro ao gerar fila.</td></tr>';
           }
         })
         .withFailureHandler(function(error) {
@@ -1762,7 +1926,7 @@
             setLoading(false);
             toast('Erro: ' + error.message, 'error');
           document.getElementById('filaBody').innerHTML =
-            '<tr><td colspan="5" class="empty-state">Erro de conexão.</td></tr>';
+            '<tr><td colspan="6" class="empty-state">Erro de conexão.</td></tr>';
           } else {
             console.warn('Erro ao gerar fila:', error);
           }
@@ -1775,7 +1939,7 @@
       tbody.innerHTML = '';
 
       if (queue.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma revisão pendente hoje</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhuma revisão pendente hoje</td></tr>';
         return;
       }
 
@@ -1784,12 +1948,47 @@
         row.classList.add('queue-row');
 
         const dateStr = formatShortDate(item.proximaRevisao) || item.proximaRevisao || '—';
+        const prioridadeVal = (Number(item.prioridade) || 0).toFixed(3);
+        const eviVal = item.eviPerMin !== null && item.eviPerMin !== undefined && !isNaN(Number(item.eviPerMin))
+          ? Number(item.eviPerMin)
+          : null;
+        const eviText = eviVal !== null ? `EVI/min ${eviVal.toFixed(3)}` : 'EVI/min —';
+        const costVal = item.costMinutes && !isNaN(Number(item.costMinutes)) ? Number(item.costMinutes) : null;
+        const costText = costVal !== null ? `Tempo ${costVal.toFixed(1)} min` : null;
+        const overdueText = item.overdue !== undefined && item.overdue !== null && !isNaN(Number(item.overdue))
+          ? `Overdue ${(Number(item.overdue)).toFixed(2)}`
+          : '';
+        const diag = item.diagnostics || {};
+        const sigma = diag && diag.sigma !== undefined && diag.sigma !== '' && !isNaN(Number(diag.sigma))
+          ? Number(diag.sigma)
+          : null;
+        const nEff = diag && diag.n_eff !== undefined && diag.n_eff !== '' && !isNaN(Number(diag.n_eff))
+          ? Number(diag.n_eff)
+          : null;
+        const diagText = sigma !== null || nEff !== null
+          ? `σ ${sigma !== null ? sigma.toFixed(3) : '—'} · n_eff ${nEff !== null ? nEff.toFixed(1) : '—'}`
+          : '—';
+        const diversityValue = item.diversity !== undefined && item.diversity !== null && !isNaN(Number(item.diversity))
+          ? Number(item.diversity)
+          : null;
+        const diversityText = diversityValue !== null && Math.abs(diversityValue) > 1e-4
+          ? `Diversidade ${diversityValue >= 0 ? '+' : ''}${diversityValue.toFixed(3)}`
+          : '';
+
+        const infoTokens = [eviText];
+        if (costText) infoTokens.push(costText);
+        if (overdueText) infoTokens.push(overdueText);
+        if (diversityText) infoTokens.push(diversityText);
 
         row.innerHTML = `
           <td>${item.alvo}</td>
-          <td>${(Number(item.prioridade) || 0).toFixed(3)}</td>
+          <td>
+            <div class="pri-main">${prioridadeVal}</div>
+            <div class="pri-sub">${infoTokens.join(' · ')}</div>
+          </td>
           <td>${dateStr}</td>
           <td>${(Number(item.estabilidade) || 0).toFixed(1)}</td>
+          <td><span class="diag-chip">${diagText}</span></td>
           <td class="fila-status">
             <button type="button" class="btn-check">✅ Marcar</button>
             <span class="victory-check">✓</span>
