@@ -114,10 +114,123 @@
       color: var(--text-primary);
     }
 
+    .card .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+      display: inline-block;
+    }
+
     .helper-text {
       color: var(--text-secondary);
       font-size: 0.85rem;
       margin-bottom: 12px;
+    }
+
+    .stepper {
+      list-style: none;
+      counter-reset: step;
+      display: grid;
+      gap: 18px;
+      margin-bottom: 18px;
+      padding-left: 0;
+    }
+
+    .stepper li {
+      position: relative;
+      padding-left: 52px;
+    }
+
+    .stepper li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      color: #fff;
+      box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
+    }
+
+    .stepper h3 {
+      margin-bottom: 6px;
+      font-size: 1.05rem;
+      color: var(--text-primary);
+    }
+
+    .stepper p {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
+    .guide-details {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      margin-top: 12px;
+    }
+
+    .guide-details summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--accent);
+      list-style: none;
+    }
+
+    .guide-details summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .guide-details summary::after {
+      content: '▾';
+      float: right;
+      transition: transform 0.2s;
+    }
+
+    .guide-details[open] summary::after {
+      transform: rotate(180deg);
+    }
+
+    .guide-details p,
+    .guide-details ul {
+      margin-top: 10px;
+      color: var(--text-secondary);
+      font-size: 0.92rem;
+    }
+
+    .callout {
+      border-left: 4px solid var(--accent);
+      padding: 12px 16px;
+      background: rgba(59, 130, 246, 0.08);
+      border-radius: 8px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .pill-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin: 14px 0 6px;
+    }
+
+    .pill {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 10px 16px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
     }
 
     /* Forms */
@@ -970,8 +1083,69 @@
     <!-- AJUSTES -->
     <div id="ajustes" class="page">
       <div class="card">
+        <span class="eyebrow">Primeiros passos</span>
+        <h2>Guia rápido para escolher as opções</h2>
+        <p class="helper-text">Quer só manter o sistema funcionando? Siga os quatro passos abaixo. Quer explorar recursos avançados? Ative um por vez e use as explicações para entender o impacto.</p>
+        <ol class="stepper">
+          <li>
+            <h3>Comece pela meta de retenção</h3>
+            <p>Defina o quanto você quer lembrar no dia da prova. 85% é um bom ponto de partida; suba para 90–92% se conseguir revisar com frequência.</p>
+            <details class="guide-details">
+              <summary>Como ela entra no cálculo?</summary>
+              <p>A meta (<code>meta</code>) aparece na fórmula do intervalo ideal: <code>I = -S · ln(meta)</code>. Quanto maior a meta, mais cedo o sistema agenda a próxima revisão.</p>
+            </details>
+          </li>
+          <li>
+            <h3>Ajuste os pesos clássicos com calma</h3>
+            <p>Os pesos de pegadinhas, tempo e dificuldade só mexem na parte de “custos”. Se estiver perdido, mantenha os padrões ou altere em incrementos de 0,1 e monitore o dashboard.</p>
+            <details class="guide-details">
+              <summary>O que compõe a prioridade?</summary>
+              <p>A prioridade final soma:</p>
+              <ul>
+                <li><strong>Urgência</strong>: <code>1 - R(t)</code>, a chance de você <em>não</em> lembrar hoje.</li>
+                <li><strong>Custos</strong>: pesos × pegadinhas, tempo relativo e dificuldade normalizada.</li>
+                <li><strong>Overdue</strong>: bônus quando você passou do intervalo ótimo.</li>
+                <li><strong>Diversidade</strong>: aparece apenas se o flag estiver ligado.</li>
+              </ul>
+            </details>
+          </li>
+          <li>
+            <h3>Decida quando ligar os recursos avançados</h3>
+            <p>Ative “Prioridade avançada (EVI)” quando quiser priorizar o maior ganho futuro por minuto. Combine com LCB para reduzir riscos e com o planejador bandit para respeitar um orçamento diário.</p>
+            <details class="guide-details">
+              <summary>O que muda com o EVI?</summary>
+              <p>O sistema estima o ganho de lembrar melhor (<code>ΔR</code>) usando a derivada <code>∂R/∂S</code> e quanto suas revisões costumam melhorar a estabilidade (<code>E[ΔS]</code>). Divide esse ganho pelo tempo médio daquele alvo e, se LCB estiver ativo, subtrai <code>β × desvio</code> para ser conservador.</p>
+              <div class="pill-grid">
+                <span class="pill">RLS/Kalman deixa o valor de S reagir mais rápido.</span>
+                <span class="pill">LCB protege contra estimativas otimistas demais.</span>
+                <span class="pill">Diversidade puxa áreas pouco estudadas para cima.</span>
+                <span class="pill">Bandit organiza a fila considerando tempo disponível.</span>
+              </div>
+            </details>
+          </li>
+          <li>
+            <h3>Entenda o passo a passo completo</h3>
+            <p>Toda vez que você salva um bloco ou revisão, o sistema repete sempre o mesmo roteiro.</p>
+            <details class="guide-details">
+              <summary>Sequência detalhada</summary>
+              <ol style="padding-left: 18px; color: var(--text-secondary);">
+                <li><strong>Medir o resultado</strong>: pega total, acertos, tempo e dificuldade.</li>
+                <li><strong>Aprender com o dado</strong>: atualiza <code>ln(S)</code> (com ou sem Kalman) comparando o resultado observado com o previsto.</li>
+                <li><strong>Aplicar limites</strong>: garante <code>S</code> entre <code>Smin</code>/<code>Smax</code> e intervalo <code>I</code> entre <code>Imin</code>/<code>Imax</code>.</li>
+                <li><strong>Recalcular R(t)</strong>: usa o tempo desde a última revisão para estimar a probabilidade atual de lembrar.</li>
+                <li><strong>Montar a prioridade</strong>: soma urgência, custos, overdue, diversidade e, se ativo, <code>EVI<sub>LCB</sub></code>.</li>
+              </ol>
+            </details>
+          </li>
+        </ol>
+        <div class="callout">
+          <strong>Dica:</strong> se estiver começando, deixe apenas o modo clássico ativo. Depois de duas semanas, revise os gráficos e libere um recurso avançado por vez para sentir a diferença.
+        </div>
+      </div>
+
+      <div class="card">
         <h2>Como Funciona o Algoritmo</h2>
-        
+
         <div class="algo-section">
           <h4>1. Probabilidade de Lembrar</h4>
           <p>
