@@ -500,6 +500,41 @@
       color: var(--success);
     }
 
+    .queue-row.bandit-selected {
+      background: rgba(59, 130, 246, 0.12);
+      box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.35);
+    }
+
+    .queue-row.bandit-selected.completed {
+      box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.35);
+    }
+
+    .queue-row.bandit-selected td {
+      border-bottom-color: rgba(59, 130, 246, 0.25);
+    }
+
+    .bandit-tag {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      background: rgba(59, 130, 246, 0.2);
+      color: var(--accent);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      margin-top: 6px;
+    }
+
+    .queue-row.bandit-selected .bandit-tag {
+      display: inline-flex;
+    }
+
+    .status-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     .queue-header {
       display: flex;
       justify-content: space-between;
@@ -507,6 +542,35 @@
       margin-bottom: 20px;
       gap: 16px;
       flex-wrap: wrap;
+    }
+
+    .bandit-controls {
+      background: rgba(59, 130, 246, 0.08);
+      border: 1px dashed rgba(59, 130, 246, 0.35);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 18px;
+    }
+
+    .bandit-controls.disabled {
+      opacity: 0.6;
+      border-style: solid;
+    }
+
+    .bandit-control-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .bandit-control-row input {
+      flex: 1 1 160px;
+      min-width: 140px;
+    }
+
+    .bandit-controls .helper-text {
+      margin-top: 10px;
     }
 
     .policy-badges {
@@ -1007,6 +1071,14 @@
           </div>
           <button class="btn btn-secondary" onclick="gerarFilaHoje()">🔄 Gerar Fila</button>
         </div>
+        <div id="banditControls" class="bandit-controls">
+          <label for="banditBudget">Minutos disponíveis nesta sessão</label>
+          <div class="bandit-control-row">
+            <input type="number" id="banditBudget" min="1" step="1" placeholder="Ex: 45">
+            <button type="button" id="banditRunButton" class="btn btn-secondary" onclick="planejarBandit()">🎯 Planejar com Bandit</button>
+          </div>
+          <p id="banditHelper" class="helper-text">Informe quantos minutos você tem e clique em “Planejar” para destacar as revisões que cabem no tempo disponível.</p>
+        </div>
         <div style="overflow-x: auto;">
           <table id="filaTable">
             <thead>
@@ -1368,6 +1440,8 @@
     let currentSettings = {};
     let reviewQueue = [];
     let calendarCache = [];
+    let banditSelection = new Set();
+    let banditMetrics = new Map();
 
     const alvoSuggestionSet = new Set();
     const areaSuggestionSet = new Set();
@@ -1496,6 +1570,40 @@
       });
       if (updated) refreshAutocompleteLists();
     }
+
+    function setBanditInfoText(budget, total) {
+      const banditInfoEl = document.getElementById('banditInfo');
+      if (!banditInfoEl) return;
+      const budgetNum = Number(budget);
+      const totalNum = Number(total);
+      if (!isNaN(budgetNum) && !isNaN(totalNum)) {
+        banditInfoEl.textContent = `Planejamento: ${budgetNum.toFixed(1)} min de ${totalNum.toFixed(1)} min`;
+      } else if (!isNaN(budgetNum)) {
+        banditInfoEl.textContent = `Planejamento: ${budgetNum.toFixed(1)} min`;
+      } else {
+        banditInfoEl.textContent = 'Planejamento: —';
+      }
+    }
+
+    function atualizarBanditControls() {
+      const controls = document.getElementById('banditControls');
+      const helper = document.getElementById('banditHelper');
+      const button = document.getElementById('banditRunButton');
+      const enabled = toBool((currentSettings || {}).useAdvancedPriority) && toBool((currentSettings || {}).useBanditPlanner);
+      if (controls) {
+        controls.classList.toggle('disabled', !enabled);
+      }
+      if (button) {
+        button.disabled = !enabled;
+      }
+      if (helper) {
+        helper.textContent = enabled
+          ? 'Informe quantos minutos você tem e clique em “Planejar” para destacar as revisões que cabem no tempo disponível.'
+          : 'Ative “Prioridade avançada (EVI)” e “Planejador bandit” em Ajustes para liberar esta etapa.';
+      }
+    }
+
+    atualizarBanditControls();
 
     // ========================================================================
     // DASHBOARD: PAINEL LATERAL DE DETALHES
@@ -1653,6 +1761,7 @@
           currentSettings = settings;
           document.getElementById('kpiMetaAtual').textContent =
             (settings.retentionTarget * 100).toFixed(0) + '%';
+          atualizarBanditControls();
         })
         .withFailureHandler(handleError)
         .apiGetSettings();
@@ -2002,6 +2111,8 @@
         .withSuccessHandler(function(result) {
           if (result && result.ok) {
             reviewQueue = result.data || [];
+            banditSelection = new Set();
+            banditMetrics = new Map();
             renderFilaRevisoes(reviewQueue);
             addSuggestionsFromQueue(reviewQueue);
             if (typeof result.count === 'number') {
@@ -2039,6 +2150,8 @@
 
           if (result && result.ok) {
             reviewQueue = result.data || [];
+            banditSelection = new Set();
+            banditMetrics = new Map();
             renderFilaRevisoes(reviewQueue);
             addSuggestionsFromQueue(reviewQueue);
 
@@ -2070,15 +2183,10 @@
               }
             }
 
-            const banditInfoEl = document.getElementById('banditInfo');
-            if (banditInfoEl) {
-              if (result.bandit && result.bandit.budget !== undefined) {
-                const budget = Number(result.bandit.budget) || 0;
-                const total = Number(result.bandit.totalCost) || 0;
-                banditInfoEl.textContent = `Planejamento: ${budget.toFixed(1)} min de ${total.toFixed(1)} min`;
-              } else {
-                banditInfoEl.textContent = 'Planejamento: —';
-              }
+            if (result.bandit) {
+              setBanditInfoText(result.bandit.budget, result.bandit.totalCost);
+            } else {
+              setBanditInfoText();
             }
 
             if (!silent) {
@@ -2106,6 +2214,87 @@
           }
         })
         .apiMakeReviewToday();
+    }
+
+    function planejarBandit() {
+      const enabled = toBool((currentSettings || {}).useAdvancedPriority) && toBool((currentSettings || {}).useBanditPlanner);
+      if (!enabled) {
+        toast('Ative “Prioridade avançada (EVI)” e “Planejador bandit” em Ajustes para usar esta etapa.', 'info');
+        return;
+      }
+
+      if (!Array.isArray(reviewQueue) || reviewQueue.length === 0) {
+        toast('Gere a fila de revisões antes de rodar o planejador.', 'warning');
+        return;
+      }
+
+      const budgetInput = document.getElementById('banditBudget');
+      const runButton = document.getElementById('banditRunButton');
+      if (!budgetInput) {
+        toast('Campo de orçamento não encontrado.', 'error');
+        return;
+      }
+
+      const rawValue = budgetInput.value.trim().replace(',', '.');
+      const budget = parseFloat(rawValue);
+      if (isNaN(budget) || budget <= 0) {
+        toast('Informe um orçamento em minutos maior que zero.', 'warning');
+        return;
+      }
+
+      budgetInput.value = budget.toFixed(1);
+      if (runButton) runButton.disabled = true;
+      setLoading(true);
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (runButton) runButton.disabled = false;
+          setLoading(false);
+
+          if (!result) {
+            toast('Erro ao planejar: resposta vazia.', 'error');
+            return;
+          }
+
+          if (result.disabled) {
+            toast('O planejador bandit está desativado nas Ajustes.', 'info');
+            return;
+          }
+
+          if (!result.ok) {
+            toast('Erro ao planejar: ' + (result.error || 'falha desconhecida'), 'error');
+            return;
+          }
+
+          const selected = Array.isArray(result.selected) ? result.selected : [];
+          banditSelection = new Set();
+          banditMetrics = new Map();
+          selected.forEach(sel => {
+            if (!sel || !sel.alvo) return;
+            banditSelection.add(sel.alvo);
+            banditMetrics.set(sel.alvo, {
+              cost: sel.custoMin !== undefined ? Number(sel.custoMin) : NaN,
+              gain: sel.ganhoLCB !== undefined ? Number(sel.ganhoLCB) : NaN,
+              ratio: sel.ratio !== undefined ? Number(sel.ratio) : NaN
+            });
+          });
+
+          setBanditInfoText(result.budget, result.totalCost);
+
+          if (selected.length > 0) {
+            toast(`Planejador selecionou ${selected.length} alvo(s) prioritário(s).`, 'success');
+          } else {
+            toast('Nenhum alvo cabia no orçamento informado. Ajuste os minutos e tente novamente.', 'warning');
+          }
+
+          renderFilaRevisoes(reviewQueue || []);
+        })
+        .withFailureHandler(function(error) {
+          if (runButton) runButton.disabled = false;
+          setLoading(false);
+          toast('Erro ao planejar: ' + (error.message || error.toString()), 'error');
+        })
+        .apiEffortPlanner(budget);
     }
 
     function renderFilaRevisoes(queue) {
@@ -2153,6 +2342,7 @@
         if (costText) infoTokens.push(costText);
         if (overdueText) infoTokens.push(overdueText);
         if (diversityText) infoTokens.push(diversityText);
+        if (banditSelection.has(item.alvo)) infoTokens.push('🎯 Planejado');
 
         row.innerHTML = `
           <td>${item.alvo}</td>
@@ -2164,14 +2354,39 @@
           <td>${(Number(item.estabilidade) || 0).toFixed(1)}</td>
           <td><span class="diag-chip">${diagText}</span></td>
           <td class="fila-status">
-            <button type="button" class="btn-check">✅ Marcar</button>
-            <span class="victory-check">✓</span>
+            <div class="status-controls">
+              <button type="button" class="btn-check">✅ Marcar</button>
+              <span class="victory-check">✓</span>
+            </div>
+            <span class="bandit-tag" hidden>🎯 Planejado</span>
           </td>
         `;
 
         const statusCell = row.querySelector('.fila-status');
         const checkBtn = statusCell ? statusCell.querySelector('button') : null;
         const victory = statusCell ? statusCell.querySelector('.victory-check') : null;
+        const banditTag = statusCell ? statusCell.querySelector('.bandit-tag') : null;
+
+        if (banditSelection.has(item.alvo)) {
+          row.classList.add('bandit-selected');
+          const metrics = banditMetrics.get(item.alvo) || {};
+          if (banditTag) {
+            let label = '🎯 Planejado';
+            if (!isNaN(Number(metrics.cost))) {
+              label = `🎯 ${Number(metrics.cost).toFixed(1)} min`;
+            } else if (!isNaN(Number(metrics.gain))) {
+              label = `🎯 Δ ${(Number(metrics.gain)).toFixed(3)}`;
+            } else if (!isNaN(Number(metrics.ratio))) {
+              label = `🎯 ROI ${(Number(metrics.ratio)).toFixed(2)}`;
+            }
+            banditTag.textContent = label;
+            banditTag.hidden = false;
+          }
+        } else {
+          if (banditTag) {
+            banditTag.hidden = true;
+          }
+        }
 
         const alreadyDone = item.feito !== undefined && item.feito !== null && `${item.feito}`.trim() !== '' && `${item.feito}` !== '0';
 
@@ -2222,6 +2437,15 @@
       }
 
       item.feito = 1;
+      if (banditSelection.has(item.alvo)) {
+        banditSelection.delete(item.alvo);
+        banditMetrics.delete(item.alvo);
+      }
+      if (row) {
+        row.classList.remove('bandit-selected');
+        const tag = row.querySelector('.bandit-tag');
+        if (tag) tag.hidden = true;
+      }
       toast(`✓ ${item.alvo} marcado como estudado!`, 'success');
     }
 
@@ -2328,6 +2552,7 @@
         .withSuccessHandler(function(settings) {
           currentSettings = settings;
           preencherFormAjustes(settings);
+          atualizarBanditControls();
           setLoading(false);
         })
         .withFailureHandler(function(error) {
@@ -2400,6 +2625,7 @@
           if (result.ok) {
             toast('Ajustes salvos com sucesso!', 'success');
             currentSettings = Object.assign({}, settings);
+            atualizarBanditControls();
           } else {
             toast('Erro ao salvar: ' + result.error, 'error');
           }
