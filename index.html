@@ -159,6 +159,211 @@
       padding-left: 0;
     }
 
+    .study-guide-form {
+      display: grid;
+      gap: 16px;
+    }
+
+    .study-guide-form .form-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .study-guide-form .form-row .form-group {
+      flex: 1 1 220px;
+      min-width: 200px;
+    }
+
+    .study-guide-preferences {
+      background: var(--bg-tertiary);
+      padding: 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .study-guide-preferences summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .study-guide-preferences .preferences-grid {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .study-guide-actions {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .study-timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .today-steps {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+
+    .study-step {
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      min-height: 120px;
+    }
+
+    .study-step h3 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    .study-step p {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .gain-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .gain-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.16);
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .timeline-list {
+      list-style: none;
+      margin: 0;
+      padding: 0 0 0 12px;
+      position: relative;
+    }
+
+    .timeline-list::before {
+      content: '';
+      position: absolute;
+      left: 6px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: rgba(148, 163, 184, 0.3);
+    }
+
+    .timeline-item {
+      position: relative;
+      margin-left: 18px;
+      padding: 12px 16px;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      margin-bottom: 12px;
+    }
+
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: -13px;
+      top: 18px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+
+    .timeline-item strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--text-primary);
+    }
+
+    .timeline-item span {
+      display: block;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .timeline-summary {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.18);
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .study-checklists {
+      display: grid;
+      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .study-check {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 0.95rem;
+    }
+
+    .study-check input {
+      accent-color: var(--accent);
+    }
+
+    .study-diagnostics {
+      display: grid;
+      gap: 8px;
+      font-size: 0.95rem;
+      color: var(--text-secondary);
+    }
+
+    .study-diagnostics strong {
+      color: var(--text-primary);
+    }
+
+    .study-rationale {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .study-guide-empty {
+      text-align: center;
+      color: var(--muted);
+      padding: 16px;
+      border: 1px dashed rgba(148, 163, 184, 0.4);
+      border-radius: 8px;
+    }
+
     .stepper li {
       position: relative;
       padding-left: 58px;
@@ -1417,11 +1622,12 @@
       <div class="header-content">
         <h1>📚 Sistema de Revisão Espaçada - Residência Médica</h1>
         <div class="tabs">
-          <button class="tab active" onclick="switchPage('dashboard')">Dashboard</button>
-          <button class="tab" onclick="switchPage('lancar')">Lançar Bloco</button>
-          <button class="tab" onclick="switchPage('revisoes')">Revisões</button>
-          <button class="tab" onclick="switchPage('planejamentoSemanal')">Planejamento Semanal</button>
-          <button class="tab" onclick="switchPage('ajustes')">Ajustes</button>
+          <button class="tab active" data-page="dashboard" onclick="switchPage('dashboard', event)">Dashboard</button>
+          <button class="tab" data-page="lancar" onclick="switchPage('lancar', event)">Lançar Bloco</button>
+          <button class="tab" data-page="revisoes" onclick="switchPage('revisoes', event)">Revisões</button>
+          <button class="tab" data-page="guiaEstudo" onclick="switchPage('guiaEstudo', event)">Guia de Estudo</button>
+          <button class="tab" data-page="planejamentoSemanal" onclick="switchPage('planejamentoSemanal', event)">Planejamento Semanal</button>
+          <button class="tab" data-page="ajustes" onclick="switchPage('ajustes', event)">Ajustes</button>
         </div>
       </div>
     </header>
@@ -1698,6 +1904,121 @@
         <datalist id="alvoSuggestions"></datalist>
         <datalist id="areaSuggestions"></datalist>
         <datalist id="subareaSuggestions"></datalist>
+      </div>
+    </div>
+
+    <!-- GUIA DE ESTUDO -->
+    <div id="guiaEstudo" class="page">
+      <div class="card">
+        <span class="eyebrow">Guia assistido</span>
+        <h2>Monte seu D1 → D2+</h2>
+        <p class="helper-text">Escolha o conteúdo e o tempo disponível para receber uma rotina completa de estudo ativo.</p>
+        <div class="study-guide-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Área</label>
+              <input type="text" id="studyGuideArea" list="areaSuggestions" placeholder="Ex: Clínica Médica">
+            </div>
+            <div class="form-group">
+              <label>Subárea</label>
+              <input type="text" id="studyGuideSubarea" list="subareaSuggestions" placeholder="Ex: Cardiologia">
+            </div>
+            <div class="form-group">
+              <label>Alvo (Área::Subárea)</label>
+              <input type="text" id="studyGuideAlvo" list="alvoSuggestions" placeholder="Combine área e subárea ou selecione da lista">
+            </div>
+            <div class="form-group">
+              <label>Tempo disponível hoje (min)</label>
+              <input type="number" id="studyGuideTempo" min="30" step="5" value="120">
+            </div>
+          </div>
+          <details class="study-guide-preferences">
+            <summary>Preferências avançadas</summary>
+            <div class="preferences-grid">
+              <div class="form-group">
+                <label>Flashcards por minuto (base)</label>
+                <input type="number" id="studyGuideCardsRate" min="0.5" max="5" step="0.1" value="2.0">
+              </div>
+              <div class="form-group">
+                <label>Questões no primeiro bloco</label>
+                <input type="number" id="studyGuideBlockTarget" min="5" max="80" step="1" value="25">
+              </div>
+              <div class="form-group">
+                <label>% do tempo D1 para leitura</label>
+                <input type="number" id="studyGuideReadShare" min="10" max="60" step="5" value="35">
+              </div>
+            </div>
+          </details>
+          <div class="study-guide-actions">
+            <button type="button" class="btn btn-primary" onclick="gerarGuiaEstudo()">Gerar Guia D1 → D2+</button>
+            <span id="studyGuideStatus" class="helper-text">Selecione um conteúdo para visualizar o roteiro.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Linha do Tempo de Estudo</h2>
+        <div class="study-timeline">
+          <div class="today-steps">
+            <div class="study-step">
+              <h3>D1 · Leitura ativa</h3>
+              <p><span id="studyGuideReadMin">—</span></p>
+              <small>Encontre ideias-chave e formule perguntas enquanto lê.</small>
+            </div>
+            <div class="study-step">
+              <h3>D1 · Criar flashcards</h3>
+              <p><span id="studyGuideFlashcards">—</span></p>
+              <small id="studyGuideFlashTooltip">Sugestão baseada em dificuldade e acerto recente.</small>
+            </div>
+            <div class="study-step">
+              <h3>D1 · Bloco de questões</h3>
+              <p><span id="studyGuideBlockInfo">—</span></p>
+              <small>Use questões de aplicação imediata para consolidar o conteúdo.</small>
+            </div>
+          </div>
+          <div class="gain-row">
+            <span class="gain-chip" id="studyGuideD1Gain">+0.0 pp</span>
+            <button type="button" class="btn btn-secondary" onclick="goToLancar()">Registrar bloco ao terminar</button>
+          </div>
+          <div id="studyGuidePlaceholder" class="study-guide-empty">
+            <p>Gere o guia para ver a sequência completa de revisões automáticas.</p>
+          </div>
+          <ul class="timeline-list" id="studyGuideTimelineList"></ul>
+          <div class="timeline-summary">
+            <span class="chip" id="studyGuideTotal7d">Total 7d: —</span>
+            <span class="chip" id="studyGuideTotal28d">Total 28d: —</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Checklist do Conteúdo</h2>
+        <div class="study-checklists">
+          <div>
+            <h3>D1 · Hoje</h3>
+            <label class="study-check"><input type="checkbox" id="studyCheckRead"> Leitura ativa concluída</label>
+            <label class="study-check"><input type="checkbox" id="studyCheckCards"> Flashcards criados</label>
+            <label class="study-check"><input type="checkbox" id="studyCheckBlock"> Bloco de questões resolvido</label>
+          </div>
+          <div>
+            <h3>D2+</h3>
+            <p class="helper-text">Use a fila “Rever Hoje” para executar as revisões sugeridas automaticamente.</p>
+            <label class="study-check"><input type="checkbox" id="studyCheckRevisoes"> Revisões acompanhadas na fila diária</label>
+          </div>
+        </div>
+        <p class="helper-text">Flashcards eficazes seguem o padrão pergunta-resposta e registram armadilhas clínicas frequentes.</p>
+      </div>
+
+      <div class="card">
+        <h2>Dicas &amp; Diagnóstico</h2>
+        <div class="study-diagnostics" id="studyGuideDiagnostics">
+          <p class="helper-text">Gere o guia para visualizar estabilidade, recall atual e métricas recentes.</p>
+        </div>
+        <div class="study-rationale" id="studyGuideRationale">
+          <span class="chip">Taxa de cards: —</span>
+          <span class="chip">Fator de dificuldade: —</span>
+          <span class="chip">Ajuste por acerto: —</span>
+        </div>
       </div>
     </div>
 
@@ -2058,6 +2379,12 @@
     const areaSuggestionSet = new Set();
     const subareaSuggestionSet = new Set();
 
+    let studyGuideInitialized = false;
+    let studyGuideState = {
+      params: null,
+      plan: null
+    };
+
     const alvoDatalist = document.getElementById('alvoSuggestions');
     const areaDatalist = document.getElementById('areaSuggestions');
     const subareaDatalist = document.getElementById('subareaSuggestions');
@@ -2082,6 +2409,11 @@
       return value === true || value === 'true' || value === 1 || value === '1';
     }
 
+    function clampValue(value, min, max) {
+      if (isNaN(value)) return min;
+      return Math.min(max, Math.max(min, value));
+    }
+
     // ========================================================================
     // UI UTILITIES
     // ========================================================================
@@ -2101,19 +2433,336 @@
       setTimeout(() => toast.remove(), 4000);
     }
 
-    function switchPage(pageId) {
+    function switchPage(pageId, evt) {
+      const eventObj = evt || (typeof event !== 'undefined' ? event : null);
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
 
-      document.getElementById(pageId).classList.add('active');
-      event.target.classList.add('active');
+      const pageEl = document.getElementById(pageId);
+      if (pageEl) {
+        pageEl.classList.add('active');
+      }
 
-      if (pageId === 'dashboard') loadDashboard();
-      if (pageId === 'ajustes') loadAjustes();
-      if (pageId === 'planejamentoSemanal') loadWeeklyPlan();
+      let tabButton = null;
+      if (eventObj && eventObj.currentTarget && eventObj.currentTarget.classList && eventObj.currentTarget.classList.contains('tab')) {
+        tabButton = eventObj.currentTarget;
+      } else if (eventObj && eventObj.target && eventObj.target.classList && eventObj.target.classList.contains('tab')) {
+        tabButton = eventObj.target;
+      }
+      if (!tabButton) {
+        tabButton = document.querySelector(`.tab[data-page='${pageId}']`);
+      }
+      if (tabButton) {
+        tabButton.classList.add('active');
+      }
+
+      if (pageId === 'dashboard') {
+        loadDashboard();
+      }
+      if (pageId === 'ajustes') {
+        loadAjustes();
+      }
+      if (pageId === 'planejamentoSemanal') {
+        loadWeeklyPlan();
+      }
+      if (pageId === 'guiaEstudo') {
+        loadStudyGuidePage();
+      }
       // REMOVER O AUTO-LOAD DE REVISÕES
       // if (pageId === 'revisoes') gerarFilaHoje();
       if (pageId !== 'dashboard') closeDayDetails();
+    }
+
+    function getStoredStudyGuide() {
+      try {
+        const raw = localStorage.getItem('studyGuide');
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+      } catch (err) {
+        console.warn('Falha ao carregar guia de estudo salvo:', err);
+        return null;
+      }
+    }
+
+    function persistStudyGuideState(state) {
+      try {
+        localStorage.setItem('studyGuide', JSON.stringify(state));
+      } catch (err) {
+        console.warn('Não foi possível salvar o guia de estudo:', err);
+      }
+    }
+
+    function initStudyGuidePage() {
+      if (studyGuideInitialized) return;
+      studyGuideInitialized = true;
+      const stored = getStoredStudyGuide() || {};
+      const prefs = stored.preferencias || {};
+
+      const areaInput = document.getElementById('studyGuideArea');
+      const subareaInput = document.getElementById('studyGuideSubarea');
+      const alvoInput = document.getElementById('studyGuideAlvo');
+      const tempoInput = document.getElementById('studyGuideTempo');
+      const cardsRateInput = document.getElementById('studyGuideCardsRate');
+      const blockTargetInput = document.getElementById('studyGuideBlockTarget');
+      const readShareInput = document.getElementById('studyGuideReadShare');
+
+      if (areaInput) areaInput.value = stored.area || '';
+      if (subareaInput) subareaInput.value = stored.subarea || '';
+      if (alvoInput) alvoInput.value = stored.alvo || '';
+      if (tempoInput) tempoInput.value = Math.round(stored.budgetD1Min || 120);
+      if (cardsRateInput) cardsRateInput.value = prefs.flashcardsPerMinBase !== undefined ? prefs.flashcardsPerMinBase : 2.0;
+      if (blockTargetInput) blockTargetInput.value = prefs.blockQuestionsTarget !== undefined ? prefs.blockQuestionsTarget : 25;
+      if (readShareInput) readShareInput.value = Math.round((prefs.readShare !== undefined ? prefs.readShare : 0.35) * 100);
+
+      resetStudyGuideUI();
+    }
+
+    function resetStudyGuideUI() {
+      const readEl = document.getElementById('studyGuideReadMin');
+      const cardsEl = document.getElementById('studyGuideFlashcards');
+      const blockEl = document.getElementById('studyGuideBlockInfo');
+      const gainEl = document.getElementById('studyGuideD1Gain');
+      const timelineList = document.getElementById('studyGuideTimelineList');
+      const placeholder = document.getElementById('studyGuidePlaceholder');
+      const total7El = document.getElementById('studyGuideTotal7d');
+      const total28El = document.getElementById('studyGuideTotal28d');
+      const diagEl = document.getElementById('studyGuideDiagnostics');
+      const rationaleEl = document.getElementById('studyGuideRationale');
+      const statusEl = document.getElementById('studyGuideStatus');
+
+      if (readEl) readEl.textContent = '—';
+      if (cardsEl) cardsEl.textContent = '—';
+      if (blockEl) blockEl.textContent = '—';
+      if (gainEl) gainEl.textContent = '+0.0 pp';
+      if (timelineList) timelineList.innerHTML = '';
+      if (placeholder) placeholder.style.display = 'block';
+      if (total7El) total7El.textContent = 'Total 7d: —';
+      if (total28El) total28El.textContent = 'Total 28d: —';
+      if (diagEl) {
+        diagEl.innerHTML = '<p class="helper-text">Gere o guia para visualizar estabilidade, recall atual e métricas recentes.</p>';
+      }
+      if (rationaleEl) {
+        rationaleEl.innerHTML = '<span class="chip">Taxa de cards: —</span><span class="chip">Fator de dificuldade: —</span><span class="chip">Ajuste por acerto: —</span>';
+      }
+      if (statusEl && !studyGuideState.plan) {
+        statusEl.textContent = 'Selecione um conteúdo para visualizar o roteiro.';
+      }
+    }
+
+    function loadStudyGuidePage() {
+      initStudyGuidePage();
+      if (studyGuideState.plan) {
+        renderStudyGuidePlan(studyGuideState.plan, { silent: true });
+      } else {
+        resetStudyGuideUI();
+      }
+    }
+
+    function renderStudyGuidePlan(plan, options = {}) {
+      if (!plan || !plan.D1 || !plan.D2plus) {
+        resetStudyGuideUI();
+        return;
+      }
+
+      const silent = !!options.silent;
+      const readEl = document.getElementById('studyGuideReadMin');
+      const cardsEl = document.getElementById('studyGuideFlashcards');
+      const blockEl = document.getElementById('studyGuideBlockInfo');
+      const gainEl = document.getElementById('studyGuideD1Gain');
+      const timelineList = document.getElementById('studyGuideTimelineList');
+      const placeholder = document.getElementById('studyGuidePlaceholder');
+      const total7El = document.getElementById('studyGuideTotal7d');
+      const total28El = document.getElementById('studyGuideTotal28d');
+      const diagEl = document.getElementById('studyGuideDiagnostics');
+      const rationaleEl = document.getElementById('studyGuideRationale');
+      const flashTooltip = document.getElementById('studyGuideFlashTooltip');
+
+      if (readEl) readEl.textContent = `${Math.round(plan.D1.readMin || 0)} min`;
+      if (cardsEl) {
+        const cardsVal = Math.round(plan.D1.flashcards || 0);
+        cardsEl.textContent = cardsVal > 0 ? `${cardsVal} cards` : '—';
+      }
+      if (blockEl) {
+        const questoes = Math.round(plan.D1.blockQuestions || 0);
+        const tempo = Math.round(plan.D1.blockEstMin || 0);
+        blockEl.textContent = questoes > 0 ? `${questoes} questões (${tempo} min)` : '—';
+      }
+      if (gainEl) gainEl.textContent = `+${Number(plan.D1.deltaRpp || 0).toFixed(1)} pp`;
+
+      if (flashTooltip && plan.D1 && plan.D1.rationale) {
+        const rationale = plan.D1.rationale;
+        const base = isFinite(rationale.cardsRate) ? rationale.cardsRate.toFixed(2) : '—';
+        const diff = isFinite(rationale.difficultyFactor) ? rationale.difficultyFactor.toFixed(2) : '—';
+        const eff = isFinite(rationale.efficiencyAdj) ? rationale.efficiencyAdj.toFixed(2) : '—';
+        flashTooltip.textContent = 'Sugestão baseada em dificuldade e acerto recente.';
+        flashTooltip.title = `Taxa base ${base} · Dificuldade ${diff} · Ajuste por acerto ${eff}`;
+      }
+
+      if (placeholder) placeholder.style.display = 'none';
+      if (timelineList) {
+        timelineList.innerHTML = '';
+        const reviews = Array.isArray(plan.D2plus.nextReviews) ? plan.D2plus.nextReviews : [];
+        if (reviews.length === 0 && placeholder) {
+          placeholder.style.display = 'block';
+        }
+        reviews.forEach(item => {
+          if (!item) return;
+          const li = document.createElement('li');
+          li.className = 'timeline-item';
+          const title = document.createElement('strong');
+          const offset = Number(item.diaOffset) || 0;
+          title.textContent = `D+${offset} · ${item.tipo || 'revisão'}`;
+          const details = document.createElement('span');
+          const estMin = Number(item.estMin) || 0;
+          const delta = Number(item.deltaRpp) || 0;
+          details.textContent = `${estMin.toFixed(0)} min · +${delta.toFixed(1)} pp`;
+          li.appendChild(title);
+          li.appendChild(details);
+          timelineList.appendChild(li);
+        });
+      }
+
+      if (total7El) total7El.textContent = `Total 7d: +${Number(plan.D2plus.totalDeltaRpp7d || 0).toFixed(1)} pp`;
+      if (total28El) total28El.textContent = `Total 28d: +${Number(plan.D2plus.totalDeltaRpp28d || 0).toFixed(1)} pp`;
+
+      if (diagEl) {
+        const diag = plan.diagnostics || {};
+        const sText = isFinite(diag.S) ? Number(diag.S).toFixed(1) : '—';
+        const recallText = isFinite(diag.Rhoje) ? `${(Number(diag.Rhoje) * 100).toFixed(0)}%` : '—';
+        const tempoText = isFinite(diag.tempoMedio) ? `${Number(diag.tempoMedio).toFixed(2)} min` : '—';
+        const acertoText = isFinite(diag.acerto_28d) ? `${(Number(diag.acerto_28d) * 100).toFixed(0)}%` : '—';
+        const difText = isFinite(diag.difMedia) ? Number(diag.difMedia).toFixed(1) : '—';
+        diagEl.innerHTML = `
+          <div><strong>Estabilidade (S):</strong> ${sText}</div>
+          <div><strong>Recall hoje:</strong> ${recallText}</div>
+          <div><strong>Tempo médio por questão:</strong> ${tempoText}</div>
+          <div><strong>Acerto 28d:</strong> ${acertoText}</div>
+          <div><strong>Dificuldade média:</strong> ${difText}</div>
+        `;
+      }
+
+      if (rationaleEl) {
+        const rationale = plan.D1 && plan.D1.rationale ? plan.D1.rationale : {};
+        const base = isFinite(rationale.cardsRate) ? rationale.cardsRate.toFixed(2) : '—';
+        const diff = isFinite(rationale.difficultyFactor) ? rationale.difficultyFactor.toFixed(2) : '—';
+        const eff = isFinite(rationale.efficiencyAdj) ? rationale.efficiencyAdj.toFixed(2) : '—';
+        rationaleEl.innerHTML = `
+          <span class="chip">Taxa de cards: ${base}/min</span>
+          <span class="chip">Fator de dificuldade: ${diff}</span>
+          <span class="chip">Ajuste por acerto: ${eff}</span>
+        `;
+      }
+
+      if (!silent) {
+        document.querySelectorAll('.study-checklists input[type="checkbox"]').forEach(cb => { cb.checked = false; });
+      }
+    }
+
+    function gerarGuiaEstudo() {
+      initStudyGuidePage();
+      const areaInput = document.getElementById('studyGuideArea');
+      const subareaInput = document.getElementById('studyGuideSubarea');
+      const alvoInput = document.getElementById('studyGuideAlvo');
+      const tempoInput = document.getElementById('studyGuideTempo');
+      const cardsRateInput = document.getElementById('studyGuideCardsRate');
+      const blockTargetInput = document.getElementById('studyGuideBlockTarget');
+      const readShareInput = document.getElementById('studyGuideReadShare');
+      const statusEl = document.getElementById('studyGuideStatus');
+
+      const area = areaInput ? areaInput.value.trim() : '';
+      const subarea = subareaInput ? subareaInput.value.trim() : '';
+      let alvo = alvoInput ? alvoInput.value.trim() : '';
+      if (!alvo && area && subarea) {
+        alvo = `${area}::${subarea}`;
+      }
+      if (!alvo) {
+        toast('Informe o alvo no formato Área::Subárea.', 'warning');
+        return;
+      }
+      if (alvo.indexOf('::') === -1) {
+        toast('Use o formato Área::Subárea para identificar o conteúdo.', 'warning');
+        return;
+      }
+
+      const tempoRaw = tempoInput ? parseFloat(tempoInput.value.toString().replace(',', '.')) : NaN;
+      if (!isFinite(tempoRaw) || tempoRaw <= 0) {
+        toast('Informe um tempo disponível válido para hoje.', 'warning');
+        return;
+      }
+
+      const cardsRate = cardsRateInput ? parseFloat(cardsRateInput.value) : NaN;
+      const blockTarget = blockTargetInput ? parseFloat(blockTargetInput.value) : NaN;
+      const readSharePercent = readShareInput ? parseFloat(readShareInput.value) : NaN;
+
+      const prefs = {
+        flashcardsPerMinBase: isFinite(cardsRate) ? clampValue(cardsRate, 0.5, 5) : 2.0,
+        blockQuestionsTarget: isFinite(blockTarget) ? clampValue(blockTarget, 5, 120) : 25,
+        readShare: isFinite(readSharePercent) ? clampValue(readSharePercent / 100, 0.1, 0.6) : 0.35
+      };
+
+      const budget = Math.round(Math.max(tempoRaw, 30));
+
+      const payload = {
+        alvo,
+        budgetD1Min: budget,
+        preferencias: prefs
+      };
+
+      persistStudyGuideState({
+        alvo,
+        area,
+        subarea,
+        budgetD1Min: budget,
+        preferencias: prefs
+      });
+
+      if (statusEl) {
+        statusEl.textContent = 'Calculando guia...';
+      }
+
+      studyGuideState.params = payload;
+
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          setLoading(false);
+          if (!result) {
+            toast('Erro ao gerar guia: resposta vazia.', 'error');
+            if (statusEl) statusEl.textContent = 'Não foi possível gerar o guia. Tente novamente.';
+            return;
+          }
+          if (result.disabled) {
+            toast('Recurso indisponível no momento.', 'info');
+            if (statusEl) statusEl.textContent = 'Recurso indisponível no momento.';
+            return;
+          }
+          if (!result.ok) {
+            toast('Erro ao gerar guia: ' + (result.error || 'falha desconhecida'), 'error');
+            if (statusEl) statusEl.textContent = 'Não foi possível gerar o guia. Tente novamente.';
+            return;
+          }
+          studyGuideState.plan = result;
+          renderStudyGuidePlan(result, { silent: false });
+          if (statusEl) statusEl.textContent = `Guia gerado para ${result.alvo}.`;
+          const deltaHoje = Number(result.D1 && result.D1.deltaRpp ? result.D1.deltaRpp : 0);
+          toast(`Guia gerado! +${deltaHoje.toFixed(1)} pp previstos hoje.`, 'success');
+        })
+        .withFailureHandler(function(error) {
+          setLoading(false);
+          toast('Erro ao gerar guia: ' + (error && error.message ? error.message : error), 'error');
+          if (statusEl) statusEl.textContent = 'Não foi possível gerar o guia. Tente novamente.';
+        })
+        .apiStudyGuidePlan(payload);
+    }
+
+    function goToLancar() {
+      const tab = document.querySelector('.tab[data-page="lancar"]');
+      if (tab) {
+        tab.click();
+      } else {
+        switchPage('lancar');
+      }
     }
 
     function refreshAutocompleteLists() {
@@ -2734,6 +3383,7 @@
             toast('Sistema inicializado com sucesso!', 'success');
             carregarDadosDashboard();
             setDefaultDate();
+            initStudyGuidePage();
           } else {
             toast('Erro ao inicializar: ' + result.error, 'error');
           }

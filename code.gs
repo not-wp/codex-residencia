@@ -2804,6 +2804,481 @@ function apiCompareModes(params) {
   }
 }
 
+function buildStudyGuideData(settings) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const spacedRows = readSheetData(SHEET_NAMES.SPACED);
+  const spacedMap = {};
+  spacedRows.forEach(row => {
+    if (!row || !row.alvo) return;
+    const key = row.alvo.toString().trim();
+    if (key) {
+      spacedMap[key] = row;
+    }
+  });
+
+  const statsRows = readSheetData(SHEET_NAMES.STATS);
+  const statsMap = {};
+  statsRows.forEach(row => {
+    if (!row) return;
+    const area = (row.area || '').toString().trim();
+    const subarea = (row.subarea || '').toString().trim();
+    const key = `${area}::${subarea}`;
+    statsMap[key] = row;
+  });
+
+  const modelRows = readSheetData(SHEET_NAMES.MODEL);
+  const modelMap = {};
+  modelRows.forEach(row => {
+    if (!row || !row.alvo) return;
+    const key = row.alvo.toString().trim();
+    if (key) {
+      modelMap[key] = row;
+    }
+  });
+
+  const gather = gatherReviewCandidates(settings, today);
+  const reviewList = Array.isArray(gather.reviewList) ? gather.reviewList : [];
+  const reviewMap = {};
+  reviewList.forEach((entry, idx) => {
+    if (!entry || !entry.alvo) return;
+    const key = entry.alvo.toString().trim();
+    if (key && !reviewMap[key]) {
+      reviewMap[key] = { entry, index: idx };
+    }
+  });
+
+  return {
+    today,
+    spacedMap,
+    statsMap,
+    modelMap,
+    reviewMap,
+    reviewList
+  };
+}
+
+function computeStudyGuidePlanForTarget(alvoRaw, budgetMin, prefs, settings, data) {
+  if (!alvoRaw || !settings || !data) return null;
+  const alvoKey = alvoRaw.toString().trim();
+  if (!alvoKey) return null;
+
+  const parts = parseAlvoParts(alvoKey);
+  let area = parts.area;
+  let subarea = parts.subarea;
+
+  const spacedRow = data.spacedMap && data.spacedMap[alvoKey] ? data.spacedMap[alvoKey] : null;
+  if ((!area || !subarea) && spacedRow && spacedRow.alvo) {
+    const spacedParts = parseAlvoParts(spacedRow.alvo);
+    area = area || spacedParts.area;
+    subarea = subarea || spacedParts.subarea;
+  }
+
+  const reviewWrapper = data.reviewMap && data.reviewMap[alvoKey] ? data.reviewMap[alvoKey] : null;
+  const reviewEntry = reviewWrapper ? reviewWrapper.entry : null;
+  if ((!area || !subarea) && reviewEntry && reviewEntry.context) {
+    area = area || (reviewEntry.context.area || '').toString().trim();
+    subarea = subarea || (reviewEntry.context.subarea || '').toString().trim();
+  }
+
+  const fallbackParts = parseAlvoParts(alvoKey);
+  area = (area || fallbackParts.area || '').trim();
+  subarea = (subarea || fallbackParts.subarea || '').trim();
+
+  const statsKeyBase = `${area}::${subarea}`;
+  let statsRow = data.statsMap ? data.statsMap[statsKeyBase] : null;
+  if (!statsRow && data.statsMap) {
+    const altKey = Object.keys(data.statsMap).find(key => key && key.toLowerCase() === statsKeyBase.toLowerCase());
+    if (altKey) {
+      statsRow = data.statsMap[altKey];
+    }
+  }
+
+  const modelRow = data.modelMap && data.modelMap[alvoKey] ? data.modelMap[alvoKey] : null;
+
+  const SminSetting = parseFloat(settings.Smin);
+  const Smin = isFinite(SminSetting) ? SminSetting : DEFAULT_SETTINGS.Smin;
+  const metaSetting = parseFloat(settings.retentionTarget);
+  const retentionTarget = isFinite(metaSetting) && metaSetting > 0 ? metaSetting : DEFAULT_SETTINGS.retentionTarget;
+
+  const prefsFlash = parseFloat(prefs.flashcardsPerMinBase);
+  const prefsBlock = parseFloat(prefs.blockQuestionsTarget);
+  let prefsReadShare = parseFloat(prefs.readShare);
+  if (isFinite(prefsReadShare) && prefsReadShare > 1.5) {
+    prefsReadShare = prefsReadShare / 100;
+  }
+  const flashRate = clamp(isFinite(prefsFlash) ? prefsFlash : 2, 0.5, 5);
+  const blockTarget = isFinite(prefsBlock) ? clamp(prefsBlock, 5, 120) : 25;
+  const readShare = clamp(isFinite(prefsReadShare) ? prefsReadShare : 0.35, 0.1, 0.6);
+
+  const msPerDay = 1000 * 60 * 60 * 24;
+  let S = null;
+  if (spacedRow && spacedRow.estabilidade !== undefined && spacedRow.estabilidade !== '') {
+    const value = parseFloat(spacedRow.estabilidade);
+    if (isFinite(value)) {
+      S = value;
+    }
+  }
+  if (!isFinite(S) && modelRow && modelRow.S_atual !== undefined && modelRow.S_atual !== '') {
+    const value = parseFloat(modelRow.S_atual);
+    if (isFinite(value)) {
+      S = value;
+    }
+  }
+
+  let context = null;
+  if (spacedRow) {
+    context = buildPriorityContext(spacedRow, statsRow || null, settings, data.today);
+  } else if (reviewEntry && reviewEntry.context) {
+    context = reviewEntry.context;
+  }
+  if (!isFinite(S) && context && context.S !== undefined) {
+    const value = parseFloat(context.S);
+    if (isFinite(value)) {
+      S = value;
+    }
+  }
+  if (!isFinite(S) || S <= 0) {
+    S = Smin;
+  }
+  S = applyCapS(S, Smin, parseFloat(settings.Smax) || DEFAULT_SETTINGS.Smax);
+
+  const useWeibull = asBoolean(settings.useWeibull);
+  let weibullK = 1;
+  if (useWeibull) {
+    if (modelRow && modelRow.weibull_k !== undefined && modelRow.weibull_k !== '') {
+      const kCandidate = parseFloat(modelRow.weibull_k);
+      if (isFinite(kCandidate) && kCandidate > 0) {
+        weibullK = kCandidate;
+      }
+    }
+    if (!isFinite(weibullK) || weibullK <= 0) {
+      weibullK = getWeibullShape(area, settings);
+    }
+    if (!isFinite(weibullK) || weibullK <= 0) {
+      weibullK = 1;
+    }
+  }
+
+  let lastReviewDays = 0;
+  if (spacedRow && spacedRow.ultimaRevisao) {
+    const ultima = parseSheetDate(spacedRow.ultimaRevisao);
+    if (ultima) {
+      lastReviewDays = Math.max(0, Math.floor((data.today - ultima) / msPerDay));
+    }
+  } else if (context && context.atrasoDias !== undefined) {
+    const atraso = parseFloat(context.atrasoDias);
+    if (isFinite(atraso)) {
+      lastReviewDays = Math.max(0, atraso);
+    }
+  }
+
+  const Rhoje = calcRecall(lastReviewDays, Math.max(1, S), weibullK);
+
+  let tempoMedioMin = null;
+  if (statsRow && statsRow.tempo_medio !== undefined && statsRow.tempo_medio !== '') {
+    const tempoStats = parseFloat(statsRow.tempo_medio);
+    if (isFinite(tempoStats) && tempoStats > 0) {
+      tempoMedioMin = tempoStats / 60;
+    }
+  }
+  if ((tempoMedioMin === null || !isFinite(tempoMedioMin) || tempoMedioMin <= 0) && context && context.tempoPrevSeg !== undefined) {
+    const tempoSeg = parseFloat(context.tempoPrevSeg);
+    if (isFinite(tempoSeg) && tempoSeg > 0) {
+      tempoMedioMin = tempoSeg / 60;
+    }
+  }
+  if (tempoMedioMin === null || !isFinite(tempoMedioMin) || tempoMedioMin <= 0) {
+    tempoMedioMin = 1;
+  }
+
+  let acerto28 = statsRow && statsRow.acerto_28d !== undefined ? parseFloat(statsRow.acerto_28d) : NaN;
+  if (!isFinite(acerto28)) {
+    acerto28 = statsRow && statsRow.acerto_vida !== undefined ? parseFloat(statsRow.acerto_vida) : NaN;
+  }
+  if (!isFinite(acerto28)) {
+    acerto28 = 0.7;
+  }
+  acerto28 = clamp(acerto28, 0, 1);
+
+  let difMedia = statsRow && statsRow.dif_media !== undefined ? parseFloat(statsRow.dif_media) : NaN;
+  if (!isFinite(difMedia)) {
+    difMedia = 3;
+  }
+
+  const kappaValue = settings.kappaPriToDelta !== undefined ? parseFloat(settings.kappaPriToDelta) : NaN;
+  const kappaPriToDelta = isFinite(kappaValue) ? kappaValue : DEFAULT_SETTINGS.kappaPriToDelta;
+  const useAdvanced = asBoolean(settings.useAdvancedPriority);
+
+  let priorityClassic = null;
+  if (reviewEntry && reviewEntry.prioridade !== undefined && reviewEntry.prioridade !== '') {
+    const pri = parseFloat(reviewEntry.prioridade);
+    if (isFinite(pri)) {
+      priorityClassic = pri;
+    }
+  }
+  if (!isFinite(priorityClassic) && context) {
+    const classic = calculateClassicPriority(context, settings);
+    if (classic && classic.score !== undefined) {
+      priorityClassic = classic.score;
+    }
+  }
+  if (!isFinite(priorityClassic)) {
+    priorityClassic = 0.1;
+  }
+
+  let plannerItem = null;
+  if (reviewEntry) {
+    plannerItem = createPlannerItem(reviewEntry, data.statsMap, settings, reviewWrapper ? reviewWrapper.index : 0);
+  }
+
+  const fallbackToPriority = !useAdvanced || !plannerItem ||
+    ((!plannerItem.eviPerMinMean && plannerItem.eviPerMinMean !== 0) && (!plannerItem.eviLCBPerMin && plannerItem.eviLCBPerMin !== 0));
+
+  const gainPerMin = calculateGainPerMinute({
+    tempoMedio: tempoMedioMin,
+    eviPerMinMean: plannerItem ? plannerItem.eviPerMinMean : null,
+    eviLCBPerMin: plannerItem ? plannerItem.eviLCBPerMin : null,
+    priPerMinClassic: Math.max(priorityClassic, 0.01) / Math.max(tempoMedioMin, 0.25)
+  }, useAdvanced, fallbackToPriority, kappaPriToDelta);
+
+  const deltaPerMin = isFinite(gainPerMin) ? Math.max(gainPerMin, 0) : 0;
+  const budget = isFinite(budgetMin) && budgetMin > 0 ? budgetMin : 0;
+
+  let readMin = Math.round(budget * readShare);
+  if (budget >= 30) {
+    readMin = Math.max(15, readMin);
+  } else {
+    readMin = Math.max(0, readMin);
+  }
+  if (readMin > budget) {
+    readMin = Math.max(0, Math.floor(budget * 0.6));
+  }
+
+  let remaining = Math.max(0, budget - readMin);
+  let blockMin = Math.round(Math.max(remaining * 0.45, budget >= 40 ? 20 : Math.min(remaining, 20)));
+  if (blockMin > remaining) {
+    blockMin = Math.round(Math.max(remaining, 0));
+  }
+  remaining = Math.max(0, budget - readMin - blockMin);
+  let flashMin = Math.round(remaining);
+
+  const totalUsed = readMin + blockMin + flashMin;
+  const budgetRounded = Math.round(budget);
+  if (totalUsed !== budgetRounded) {
+    const diff = budgetRounded - totalUsed;
+    if (diff !== 0) {
+      flashMin = Math.max(0, flashMin + diff);
+      if (flashMin < 0) {
+        blockMin = Math.max(0, blockMin + flashMin);
+        flashMin = 0;
+        if (blockMin < 0) {
+          readMin = Math.max(0, readMin + blockMin);
+          blockMin = 0;
+        }
+      }
+    }
+  }
+
+  const flashcardsMin = Math.max(0, flashMin);
+  const difFactor = clamp(1 + 0.1 * (difMedia - 3), 0.6, 1.4);
+  let acertoFactor = 1;
+  if (acerto28 < 0.6) {
+    acertoFactor = 1.1;
+  } else if (acerto28 > 0.8) {
+    acertoFactor = 0.9;
+  }
+  const rawCards = flashcardsMin > 0 ? flashRate * flashcardsMin * difFactor * acertoFactor : 0;
+  const flashcards = flashcardsMin > 0 ? Math.round(clamp(rawCards, 20, 120)) : 0;
+
+  const tempoQuest = Math.max(tempoMedioMin, 0.5);
+  let blockQuestions = blockMin > 0 ? Math.max(5, Math.round(blockTarget)) : 0;
+  if (blockMin > 0 && tempoQuest > 0) {
+    const maxByTime = Math.floor(blockMin / tempoQuest);
+    if (isFinite(maxByTime) && maxByTime > 0) {
+      if (blockQuestions > maxByTime) {
+        blockQuestions = Math.max(5, maxByTime);
+      } else {
+        const fill = Math.max(5, Math.round(blockMin / tempoQuest));
+        blockQuestions = Math.max(5, Math.min(Math.max(blockQuestions, fill), Math.max(maxByTime, blockQuestions)));
+      }
+    }
+  }
+  if (blockMin <= 0) {
+    blockQuestions = 0;
+  }
+
+  const blockEst = blockQuestions > 0 ? Math.round(blockQuestions * tempoQuest) : Math.round(blockMin);
+  const deltaHoje = Math.max(0, Math.round(deltaPerMin * budget * 10) / 10);
+
+  const firstInterval = calcOptimalInterval(S, retentionTarget, weibullK);
+  let firstOffset = null;
+  if (spacedRow && spacedRow.proximaRevisao) {
+    const prox = parseSheetDate(spacedRow.proximaRevisao);
+    if (prox) {
+      firstOffset = Math.max(1, Math.round((prox - data.today) / msPerDay));
+    }
+  }
+  if (!isFinite(firstOffset) || firstOffset === null) {
+    firstOffset = Math.max(2, Math.round(firstInterval));
+  }
+  if (!isFinite(firstOffset) || firstOffset <= 0) {
+    firstOffset = 2;
+  }
+
+  const offsets = [
+    firstOffset,
+    Math.max(firstOffset + 3, Math.round(firstOffset * 2)),
+    Math.max(firstOffset + 7, Math.round(firstOffset * 1.5))
+  ];
+  const uniqueOffsets = [];
+  offsets.forEach(off => {
+    const val = Math.max(1, Math.round(off));
+    if (uniqueOffsets.indexOf(val) === -1) {
+      uniqueOffsets.push(val);
+    }
+  });
+
+  const nextReviews = [];
+  uniqueOffsets.slice(0, 3).forEach((offset, idx) => {
+    const estMin = offset <= 3 ? 15 : 20;
+    const tipo = offset <= 3 ? 'revisão curta' : 'revisão média';
+    const decay = Math.pow(0.85, idx);
+    const delta = Math.max(0, Math.round(deltaPerMin * estMin * decay * 10) / 10);
+    nextReviews.push({ diaOffset: offset, tipo, estMin, deltaRpp: delta });
+  });
+
+  const total7 = nextReviews
+    .filter(item => item && item.diaOffset <= 7)
+    .reduce((sum, item) => sum + (item.deltaRpp || 0), 0);
+  const total28 = nextReviews
+    .filter(item => item && item.diaOffset <= 28)
+    .reduce((sum, item) => sum + (item.deltaRpp || 0), 0);
+
+  return {
+    alvo: alvoKey,
+    area,
+    subarea,
+    diagnostics: {
+      S,
+      Rhoje,
+      tempoMedio: tempoMedioMin,
+      acerto_28d: acerto28,
+      difMedia
+    },
+    D1: {
+      readMin: Math.round(readMin),
+      flashcards,
+      blockQuestions,
+      blockEstMin: Math.max(0, blockEst),
+      deltaRpp: deltaHoje,
+      rationale: {
+        cardsRate: Number(flashRate.toFixed ? flashRate.toFixed(2) : flashRate),
+        difficultyFactor: Number(difFactor.toFixed ? difFactor.toFixed(2) : difFactor),
+        efficiencyAdj: Number(acertoFactor.toFixed ? acertoFactor.toFixed(2) : acertoFactor)
+      }
+    },
+    D2plus: {
+      nextReviews,
+      totalDeltaRpp7d: Math.round(total7 * 10) / 10,
+      totalDeltaRpp28d: Math.round(total28 * 10) / 10
+    }
+  };
+}
+
+function apiStudyGuidePlan(params) {
+  try {
+    const settings = apiGetSettings();
+    const payload = params || {};
+    const alvoRaw = (payload.alvo || '').toString().trim();
+    if (!alvoRaw) {
+      return { ok: false, error: 'Alvo inválido' };
+    }
+
+    const budgetInput = parseFloat(payload.budgetD1Min);
+    const budgetMin = isFinite(budgetInput) && budgetInput > 0 ? budgetInput : 0;
+
+    const prefsInput = payload.preferencias || {};
+    const prefs = {
+      flashcardsPerMinBase: prefsInput.flashcardsPerMinBase,
+      blockQuestionsTarget: prefsInput.blockQuestionsTarget,
+      readShare: prefsInput.readShare
+    };
+
+    const planningSettings = applyPlanningModeAdjustments(Object.assign({}, settings), payload.mode);
+    const data = buildStudyGuideData(planningSettings);
+    const plan = computeStudyGuidePlanForTarget(alvoRaw, budgetMin, prefs, planningSettings, data);
+    if (!plan) {
+      return { ok: false, error: 'Alvo não encontrado ou sem dados suficientes' };
+    }
+    return Object.assign({ ok: true }, plan);
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiStudyGuideCompareAlvos(params) {
+  try {
+    const settings = apiGetSettings();
+    const payload = params || {};
+    const budgetInput = parseFloat(payload.budgetD1Min);
+    const budgetMin = isFinite(budgetInput) && budgetInput > 0 ? budgetInput : 0;
+
+    const prefsInput = payload.preferencias || {};
+    const prefs = {
+      flashcardsPerMinBase: prefsInput.flashcardsPerMinBase,
+      blockQuestionsTarget: prefsInput.blockQuestionsTarget,
+      readShare: prefsInput.readShare
+    };
+
+    const maxTargetsInput = payload.maxTargets !== undefined ? parseInt(payload.maxTargets, 10) : 5;
+    const maxTargets = isFinite(maxTargetsInput) && maxTargetsInput > 0 ? maxTargetsInput : 5;
+
+    const areaFilter = (payload.area || '').toString().trim().toLowerCase();
+    const subFilter = (payload.subarea || '').toString().trim().toLowerCase();
+
+    const planningSettings = applyPlanningModeAdjustments(Object.assign({}, settings), payload.mode);
+    const data = buildStudyGuideData(planningSettings);
+
+    const alvoSet = new Set();
+    Object.keys(data.spacedMap || {}).forEach(key => alvoSet.add(key));
+    (data.reviewList || []).forEach(entry => {
+      if (entry && entry.alvo) {
+        alvoSet.add(entry.alvo.toString().trim());
+      }
+    });
+
+    const results = [];
+    alvoSet.forEach(key => {
+      if (!key) return;
+      const parts = parseAlvoParts(key);
+      if (areaFilter && parts.area.toLowerCase() !== areaFilter) return;
+      if (subFilter && parts.subarea.toLowerCase() !== subFilter) return;
+      const plan = computeStudyGuidePlanForTarget(key, budgetMin, prefs, planningSettings, data);
+      if (plan && plan.D1) {
+        results.push(plan);
+      }
+    });
+
+    results.sort((a, b) => {
+      const deltaA = a && a.D1 && a.D1.deltaRpp ? Number(a.D1.deltaRpp) : 0;
+      const deltaB = b && b.D1 && b.D1.deltaRpp ? Number(b.D1.deltaRpp) : 0;
+      return deltaB - deltaA;
+    });
+
+    const limited = maxTargets > 0 ? results.slice(0, maxTargets) : results;
+
+    return {
+      ok: true,
+      budgetD1Min: budgetMin,
+      targets: limited
+    };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
 function apiWeeklyPlan(params) {
   try {
     const settings = apiGetSettings();
