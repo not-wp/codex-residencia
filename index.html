@@ -123,6 +123,70 @@
       position: relative;
     }
 
+    .flow-wrapper {
+      display: grid;
+      gap: 36px;
+      margin-bottom: 32px;
+    }
+
+    .flow-step {
+      position: relative;
+      padding-left: 56px;
+    }
+
+    .flow-step::before {
+      content: '';
+      position: absolute;
+      left: 24px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(to bottom, rgba(59, 130, 246, 0.35), rgba(59, 130, 246, 0));
+    }
+
+    .flow-step:first-child::before {
+      top: 32px;
+    }
+
+    .flow-step:last-child::before {
+      bottom: 48px;
+    }
+
+    .flow-step-head {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .flow-step-index {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.05rem;
+      box-shadow: 0 6px 18px rgba(59, 130, 246, 0.35);
+    }
+
+    .flow-step-body {
+      display: grid;
+      gap: 20px;
+    }
+
+    .flow-step-body .card {
+      margin-bottom: 0;
+    }
+
+    .flow-step-subtitle {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+
     .card h2 {
       font-size: 1.4rem;
       margin-bottom: 16px;
@@ -133,6 +197,15 @@
       font-size: 1.05rem;
       margin-bottom: 12px;
       color: var(--text-primary);
+    }
+
+    .card-header-inline {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
     }
 
     .card .eyebrow {
@@ -385,15 +458,15 @@
 
     .study-check {
       display: flex;
-      gap: 10px;
-      align-items: flex-start;
+      gap: 12px;
+      align-items: center;
       margin-bottom: 10px;
       font-size: 0.95rem;
     }
 
     .study-check input {
       accent-color: var(--accent);
-      margin-top: 4px;
+      margin-top: 0;
     }
 
     .study-check span {
@@ -417,6 +490,26 @@
       gap: 10px;
       flex-wrap: wrap;
       margin-top: 12px;
+    }
+
+    @media (max-width: 768px) {
+      .flow-step {
+        padding-left: 0;
+      }
+
+      .flow-step::before {
+        display: none;
+      }
+
+      .flow-step-head {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .flow-step-index {
+        margin-bottom: 6px;
+      }
     }
 
     .study-guide-empty {
@@ -1251,6 +1344,28 @@
       color: #f9fafb;
     }
 
+    .flow-bridge-controls {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      margin: 18px 0 12px;
+    }
+
+    .flow-bridge-controls .form-group {
+      flex: 1 1 240px;
+      min-width: 200px;
+    }
+
+    .flow-bridge-controls select {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
     .queue-header {
       display: flex;
       justify-content: space-between;
@@ -1815,258 +1930,332 @@
 
     <!-- REVISÕES -->
     <div id="revisoes" class="page">
-      <div class="card">
-        <div class="queue-header">
-          <div>
-            <h2>Fila de Revisões de Hoje</h2>
-            <div class="policy-badges">
-              <span id="policyBadge" class="policy-badge">Modo: —</span>
-              <span id="policyEvi" class="policy-subtext">EVI médio: —</span>
+      <div class="flow-wrapper">
+        <section class="flow-step" id="flowStepPlanner">
+          <div class="flow-step-head">
+            <span class="flow-step-index">1</span>
+            <div>
+              <h2>Monte o plano do dia</h2>
+              <p class="flow-step-subtitle">Distribua o orçamento, escolha o modo da sessão e entenda o ganho previsto antes de começar.</p>
             </div>
           </div>
-          <button class="btn btn-secondary" onclick="gerarFilaHoje()">🔄 Gerar Fila</button>
-        </div>
-        <div id="plannerPanel" class="planner-panel">
-          <div class="planner-top">
-            <div class="planner-input">
-              <label for="plannerBudget">Orçamento do dia (min)</label>
-              <div class="planner-input-row">
-                <input type="number" id="plannerBudget" min="0" step="5" value="90" placeholder="Ex: 90">
-                <button type="button" id="plannerRunButton" class="btn btn-secondary" onclick="calcularPlano()">🧮 Calcular plano</button>
+          <div class="flow-step-body">
+            <div class="card" id="plannerCard">
+              <div class="card-header-inline">
+                <h3>Distribuição diária</h3>
+                <p class="helper-text">Use o planejador bandit para transformar o orçamento em minutos por alvo.</p>
+              </div>
+              <div id="plannerPanel" class="planner-panel">
+                <div class="planner-top">
+                  <div class="planner-input">
+                    <label for="plannerBudget">Orçamento do dia (min)</label>
+                    <div class="planner-input-row">
+                      <input type="number" id="plannerBudget" min="0" step="5" value="90" placeholder="Ex: 90">
+                      <button type="button" id="plannerRunButton" class="btn btn-secondary" onclick="calcularPlano()">🧮 Calcular plano</button>
+                    </div>
+                  </div>
+                  <div id="plannerTotalBadge" class="planner-total">Total: —</div>
+                </div>
+                <div id="plannerChips" class="planner-chips"></div>
+                <div class="planner-mode">
+                  <span style="font-size:0.9rem; color:var(--text-secondary);">Modo de sessão:</span>
+                  <div class="mode-toggle">
+                    <button type="button" id="modePowerBtn" data-mode="power">Power</button>
+                    <button type="button" id="modeMaintenanceBtn" data-mode="maintenance">Maintenance</button>
+                  </div>
+                </div>
+                <p id="plannerHelper" class="helper-text">Informe seu orçamento em minutos para distribuir o tempo proporcionalmente ao ganho esperado.</p>
               </div>
             </div>
-            <div id="plannerTotalBadge" class="planner-total">Total: —</div>
-          </div>
-          <div id="plannerChips" class="planner-chips"></div>
-          <div class="planner-mode">
-            <span style="font-size:0.9rem; color:var(--text-secondary);">Modo de sessão:</span>
-            <div class="mode-toggle">
-              <button type="button" id="modePowerBtn" data-mode="power">Power</button>
-              <button type="button" id="modeMaintenanceBtn" data-mode="maintenance">Maintenance</button>
+
+            <div class="card" id="modeComparisonCard">
+              <div class="comparison-controls">
+                <div>
+                  <h3>Power vs Maintenance</h3>
+                  <p class="helper-text">
+                    Compare como cada modo distribui o mesmo orçamento para maximizar ganho ou preservar consistência.
+                  </p>
+                </div>
+                <button type="button" class="btn btn-secondary" id="compareModesBtn" onclick="compareModes()">⚖️ Comparar modos</button>
+              </div>
+
+              <div class="mode-explainer">
+                <div class="mode-pill">
+                  <strong>Power <span class="info-icon" title="Foco em alto EVI/min, exploração maior e diversidade controlada.">ⓘ</span></strong>
+                  <p>Indicado para sprints e ganho rápido: prioriza alvos com maior ganho marginal por minuto, aceitando mais incerteza.</p>
+                </div>
+                <div class="mode-pill">
+                  <strong>Maintenance <span class="info-icon" title="Prioriza dívida, diversidade e decisões seguras com LCB mais rígido.">ⓘ</span></strong>
+                  <p>Ideal para manter retenção e cobertura equilibrada: aumenta peso para overdue e reduz exploração agressiva.</p>
+                </div>
+              </div>
+
+              <div class="mode-comparison-grid">
+                <div class="mode-box" id="powerModeBox">
+                  <h3>Power <span class="info-icon" title="Exploração ↑, penalização por incerteza ↓, diversidade ↓.">ⓘ</span></h3>
+                  <div class="mode-gain" id="powerGainValue">—</div>
+                  <div class="mode-metrics" id="powerMetricChips"></div>
+                  <div class="mode-area-chips" id="powerAreaChips"></div>
+                </div>
+                <div class="mode-box" id="maintenanceModeBox">
+                  <h3>Maintenance <span class="info-icon" title="Exploração ↓, diversidade ↑, decisões mais conservadoras.">ⓘ</span></h3>
+                  <div class="mode-gain" id="maintenanceGainValue">—</div>
+                  <div class="mode-metrics" id="maintenanceMetricChips"></div>
+                  <div class="mode-area-chips" id="maintenanceAreaChips"></div>
+                </div>
+              </div>
+
+              <div class="mode-diagnosis" id="modeDiagnosisText">
+                Execute a comparação para entender por que cada modo recomenda ganhos diferentes com o mesmo orçamento.
+              </div>
+              <div class="mode-guidance" id="modeGuidanceText">
+                Se busca acelerar ganhos hoje, escolha Power. Se precisa equilibrar áreas e manter retenção, escolha Maintenance.
+              </div>
+
+              <div class="mode-summary-row">
+                <div class="summary-text" id="modeSummaryText">Modo atual: —</div>
+                <button type="button" class="btn btn-primary" onclick="aplicarPlanoAtual()">Aplicar plano do modo atual</button>
+              </div>
             </div>
           </div>
-          <p id="plannerHelper" class="helper-text">Informe seu orçamento em minutos para distribuir o tempo proporcionalmente ao ganho esperado.</p>
-        </div>
-        <div style="overflow-x: auto;">
-          <table id="filaTable" class="reviews-table">
-            <thead>
-              <tr>
-                <th class="col-alvo">Alvo</th>
-                <th class="col-pri">Pri</th>
-                <th class="col-s">S</th>
-                <th class="col-t">t (dias)</th>
-                <th class="col-evi" id="colEviHeader">EVI/min</th>
-                <th class="col-alloc">Alocação</th>
-                <th class="col-delta">ΔR (%)</th>
-                <th class="col-status">Status</th>
-              </tr>
-            </thead>
-            <tbody id="filaBody">
-              <tr><td colspan="8" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+        </section>
 
-      <div class="card" id="modeComparisonCard">
-        <div class="comparison-controls">
-          <div>
-            <h2>Power vs Maintenance</h2>
-            <p class="helper-text">
-              Compare como cada modo distribui o mesmo orçamento para maximizar ganho ou preservar consistência.
-            </p>
+        <section class="flow-step" id="flowStepQueue">
+          <div class="flow-step-head">
+            <span class="flow-step-index">2</span>
+            <div>
+              <h2>Execute a fila</h2>
+              <p class="flow-step-subtitle">Abra cada alvo na ordem sugerida, marque o status e registre o resultado no fim de cada sessão.</p>
+            </div>
           </div>
-          <button type="button" class="btn btn-secondary" id="compareModesBtn" onclick="compareModes()">⚖️ Comparar modos</button>
-        </div>
+          <div class="flow-step-body">
+            <div class="card" id="queueCard">
+              <div class="queue-header">
+                <div>
+                  <h3>Fila de Revisões de Hoje</h3>
+                  <div class="policy-badges">
+                    <span id="policyBadge" class="policy-badge">Modo: —</span>
+                    <span id="policyEvi" class="policy-subtext">EVI médio: —</span>
+                  </div>
+                </div>
+                <button class="btn btn-secondary" onclick="gerarFilaHoje()">🔄 Gerar Fila</button>
+              </div>
+              <p class="helper-text">Avance na sequência, use a coluna de status para marcar o que já foi estudado e registre a revisão quando terminar.</p>
+              <div style="overflow-x: auto;">
+                <table id="filaTable" class="reviews-table">
+                  <thead>
+                    <tr>
+                      <th class="col-alvo">Alvo</th>
+                      <th class="col-pri">Pri</th>
+                      <th class="col-s">S</th>
+                      <th class="col-t">t (dias)</th>
+                      <th class="col-evi" id="colEviHeader">EVI/min</th>
+                      <th class="col-alloc">Alocação</th>
+                      <th class="col-delta">ΔR (%)</th>
+                      <th class="col-status">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="filaBody">
+                    <tr><td colspan="8" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
 
-        <div class="mode-explainer">
-          <div class="mode-pill">
-            <strong>Power <span class="info-icon" title="Foco em alto EVI/min, exploração maior e diversidade controlada.">ⓘ</span></strong>
-            <p>Indicado para sprints e ganho rápido: prioriza alvos com maior ganho marginal por minuto, aceitando mais incerteza.</p>
+        <section class="flow-step" id="flowStepGuide">
+          <div class="flow-step-head">
+            <span class="flow-step-index">3</span>
+            <div>
+              <h2>Detalhe cada conteúdo</h2>
+              <p class="flow-step-subtitle">Transforme as alocações em um roteiro completo com o Guia de Estudo.</p>
+            </div>
           </div>
-          <div class="mode-pill">
-            <strong>Maintenance <span class="info-icon" title="Prioriza dívida, diversidade e decisões seguras com LCB mais rígido.">ⓘ</span></strong>
-            <p>Ideal para manter retenção e cobertura equilibrada: aumenta peso para overdue e reduz exploração agressiva.</p>
+          <div class="flow-step-body">
+            <div class="card" id="flowPlannerBridgeCard">
+              <div class="card-header-inline">
+                <h3>Resumo das alocações do dia</h3>
+                <p class="helper-text">Selecione um alvo planejado para abrir o guia D1 → D2+ com tempos e ganhos previstos.</p>
+              </div>
+              <div id="flowPlannerSummaryTotals" class="planner-total">Total planejado: —</div>
+              <div id="flowPlannerSummaryChips" class="planner-chips"></div>
+              <div class="flow-bridge-controls">
+                <div class="form-group">
+                  <label for="flowStudyGuideSelect">Escolha um alvo planejado</label>
+                  <select id="flowStudyGuideSelect">
+                    <option value="">Sem plano calculado ainda</option>
+                  </select>
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="abrirGuiaDoFluxo()">📘 Abrir Guia de Estudo</button>
+              </div>
+              <p id="flowPlannerSummaryHelper" class="helper-text">Calcule o plano para liberar a lista de conteúdos com tempo sugerido.</p>
+            </div>
           </div>
-        </div>
+        </section>
 
-        <div class="mode-comparison-grid">
-          <div class="mode-box" id="powerModeBox">
-            <h3>Power <span class="info-icon" title="Exploração ↑, penalização por incerteza ↓, diversidade ↓.">ⓘ</span></h3>
-            <div class="mode-gain" id="powerGainValue">—</div>
-            <div class="mode-metrics" id="powerMetricChips"></div>
-            <div class="mode-area-chips" id="powerAreaChips"></div>
+        <section class="flow-step" id="flowStepRetrospectiva">
+          <div class="flow-step-head">
+            <span class="flow-step-index">4</span>
+            <div>
+              <h2>Feche o dia</h2>
+              <p class="flow-step-subtitle">Revise o que foi concluído, capture o resumo e salve a retrospectiva.</p>
+            </div>
           </div>
-          <div class="mode-box" id="maintenanceModeBox">
-            <h3>Maintenance <span class="info-icon" title="Exploração ↓, diversidade ↑, decisões mais conservadoras.">ⓘ</span></h3>
-            <div class="mode-gain" id="maintenanceGainValue">—</div>
-            <div class="mode-metrics" id="maintenanceMetricChips"></div>
-            <div class="mode-area-chips" id="maintenanceAreaChips"></div>
+          <div class="flow-step-body">
+            <div class="card" id="retrospectivaCard">
+              <h3>Retrospectiva do Dia</h3>
+              <p class="helper-text">Revise o que foi concluído e registre o ganho estimado ao encerrar o dia.</p>
+              <div id="retrospectivaResumo" class="retrospectiva-summary">
+                <div><strong>Total estudado:</strong> — min</div>
+                <div><strong>Ganho estimado:</strong> — pp</div>
+                <div><strong>Execução:</strong> — %</div>
+              </div>
+              <div class="retrospectiva-actions">
+                <button type="button" class="btn btn-secondary" onclick="capturarRetrospectiva()">Encerrar Dia</button>
+                <button type="button" class="btn btn-secondary" onclick="exportarRetrospectiva()">📄 Exportar registro</button>
+              </div>
+              <div id="retrospectivaLista" class="retrospectiva-lista"></div>
+            </div>
           </div>
-        </div>
-
-        <div class="mode-diagnosis" id="modeDiagnosisText">
-          Execute a comparação para entender por que cada modo recomenda ganhos diferentes com o mesmo orçamento.
-        </div>
-        <div class="mode-guidance" id="modeGuidanceText">
-          Se busca acelerar ganhos hoje, escolha Power. Se precisa equilibrar áreas e manter retenção, escolha Maintenance.
-        </div>
-
-        <div class="mode-summary-row">
-          <div class="summary-text" id="modeSummaryText">Modo atual: —</div>
-          <button type="button" class="btn btn-primary" onclick="aplicarPlanoAtual()">Aplicar plano do modo atual</button>
-        </div>
-      </div>
-
-      <div class="card" id="retrospectivaCard">
-        <h2>Retrospectiva do Dia</h2>
-        <p class="helper-text">Revise o que foi concluído e registre o ganho estimado ao encerrar o dia.</p>
-        <div id="retrospectivaResumo" class="retrospectiva-summary">
-          <div><strong>Total estudado:</strong> — min</div>
-          <div><strong>Ganho estimado:</strong> —</div>
-          <div><strong>Execução:</strong> —</div>
-          <div><strong>Top áreas:</strong> —</div>
-        </div>
-        <button type="button" class="btn btn-secondary" onclick="encerrarDia()">✅ Encerrar Dia</button>
-      </div>
-
-      <div class="card">
-        <h2>Registrar Revisão</h2>
-        <form id="formRevisao" onsubmit="return false;">
-          <div class="form-group">
-            <label>Alvo (Área::Subárea)</label>
-            <input type="text" id="revisaoAlvo" placeholder="Ex: Clínica Médica::Cardiologia" list="alvoSuggestions">
-            <small style="color: var(--text-secondary); font-size: 0.75rem;">Escolha o alvo completo ou digite para usar o autocomplete.</small>
-          </div>
-          <div class="form-group">
-            <label>Dias desde a última revisão</label>
-            <input type="number" id="revisaoTDias" min="0" placeholder="Ex: 7">
-          </div>
-          <div class="form-group">
-            <label>Total de Questões</label>
-            <input type="number" id="revisaoTotal" min="1" required>
-          </div>
-          <div class="form-group">
-            <label>Acertos</label>
-            <input type="number" id="revisaoAcertos" min="0" required>
-          </div>
-          <div class="form-group">
-            <label>Tempo médio por questão (segundos)</label>
-            <input type="number" id="revisaoTempo" min="0" step="0.1" value="60">
-          </div>
-          <div class="form-group">
-            <label>Dificuldade Percebida</label>
-            <select id="revisaoDif">
-              <option value="1">1 - Muito Fácil</option>
-              <option value="2">2 - Fácil</option>
-              <option value="3" selected>3 - Médio</option>
-              <option value="4">4 - Difícil</option>
-              <option value="5">5 - Muito Difícil</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Observações</label>
-            <textarea id="revisaoObs" placeholder="Anotações sobre a revisão..."></textarea>
-          </div>
-          <button type="button" class="btn btn-success" onclick="salvarRevisao()">Salvar revisão</button>
-        </form>
-        <datalist id="alvoSuggestions"></datalist>
-        <datalist id="areaSuggestions"></datalist>
-        <datalist id="subareaSuggestions"></datalist>
+        </section>
       </div>
     </div>
-
-    <!-- GUIA DE ESTUDO -->
     <div id="guiaEstudo" class="page">
-      <div class="card">
-        <span class="eyebrow">Guia assistido</span>
-        <h2>Monte seu D1 → D2+</h2>
-        <p class="helper-text">Escolha o conteúdo e o tempo disponível para receber uma rotina completa de estudo ativo.</p>
-        <div class="study-guide-form">
-          <div class="form-row">
-            <div class="form-group">
-              <label>Alvo (Área::Subárea)</label>
-              <input type="text" id="studyGuideAlvo" list="alvoSuggestions" placeholder="Ex: Clínica Médica::Cardiologia">
-            </div>
-            <div class="form-group">
-              <label>Tempo disponível hoje (min)</label>
-              <input type="number" id="studyGuideTempo" min="30" step="5" value="120">
+      <div class="flow-wrapper">
+        <section class="flow-step" id="guideStepSelect">
+          <div class="flow-step-head">
+            <span class="flow-step-index">1</span>
+            <div>
+              <h2>Escolha o conteúdo e o tempo</h2>
+              <p class="flow-step-subtitle">Selecione o alvo, informe o tempo disponível e veja como o D1 se encaixa no plano diário.</p>
             </div>
           </div>
-          <details class="study-guide-preferences">
-            <summary>Preferências avançadas</summary>
-            <div class="preferences-grid">
-              <div class="form-group">
-                <label>Flashcards por minuto (base)</label>
-                <input type="number" id="studyGuideCardsRate" min="0.5" max="5" step="0.1" value="2.0">
+          <div class="flow-step-body">
+            <div class="card">
+              <span class="eyebrow">Guia assistido</span>
+              <h3>Monte seu D1 → D2+</h3>
+              <p class="helper-text">Escolha o conteúdo e o tempo disponível para receber uma rotina completa de estudo ativo.</p>
+              <div class="study-guide-form">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Alvo (Área::Subárea)</label>
+                    <input type="text" id="studyGuideAlvo" list="alvoSuggestions" placeholder="Ex: Clínica Médica::Cardiologia">
+                  </div>
+                  <div class="form-group">
+                    <label>Tempo disponível hoje (min)</label>
+                    <input type="number" id="studyGuideTempo" min="30" step="5" value="120">
+                  </div>
+                </div>
+                <details class="study-guide-preferences">
+                  <summary>Preferências avançadas</summary>
+                  <div class="preferences-grid">
+                    <div class="form-group">
+                      <label>Flashcards por minuto (base)</label>
+                      <input type="number" id="studyGuideCardsRate" min="0.5" max="5" step="0.1" value="2.0">
+                    </div>
+                    <div class="form-group">
+                      <label>Questões no primeiro bloco</label>
+                      <input type="number" id="studyGuideBlockTarget" min="5" max="80" step="1" value="25">
+                    </div>
+                    <div class="form-group">
+                      <label>% do tempo D1 para leitura</label>
+                      <input type="number" id="studyGuideReadShare" min="10" max="60" step="5" value="35">
+                    </div>
+                  </div>
+                </details>
+                <div class="study-guide-actions">
+                  <button type="button" class="btn btn-primary" onclick="gerarGuiaEstudo()">Gerar Guia D1 → D2+</button>
+                  <span id="studyGuideStatus" class="helper-text">Selecione um conteúdo para visualizar o roteiro.</span>
+                </div>
+                <div class="study-guide-plan-summary">
+                  <div class="plan-summary-header">
+                    <h3>Plano diário atual</h3>
+                    <p class="summary-helper" id="studyGuidePlannerHelper">Execute o planner na aba Revisões para distribuir o tempo do dia.</p>
+                  </div>
+                  <div class="planner-chips" id="studyGuidePlannerChips"></div>
+                </div>
               </div>
-              <div class="form-group">
-                <label>Questões no primeiro bloco</label>
-                <input type="number" id="studyGuideBlockTarget" min="5" max="80" step="1" value="25">
-              </div>
-              <div class="form-group">
-                <label>% do tempo D1 para leitura</label>
-                <input type="number" id="studyGuideReadShare" min="10" max="60" step="5" value="35">
+            </div>
+          </div>
+        </section>
+
+        <section class="flow-step" id="guideStepTimeline">
+          <div class="flow-step-head">
+            <span class="flow-step-index">2</span>
+            <div>
+              <h2>Siga o roteiro de hoje</h2>
+              <p class="flow-step-subtitle">Veja os passos do D1 e as revisões automáticas previstas para os próximos dias.</p>
+            </div>
+          </div>
+          <div class="flow-step-body">
+            <div class="card">
+              <h3>Linha do Tempo de Estudo</h3>
+              <div class="study-timeline">
+                <div class="timeline-header">
+                  <span class="chip" id="studyGuideStatusChip">Status: —</span>
+                  <span class="chip" id="studyGuideStageChip">Etapa: —</span>
+                </div>
+                <div class="today-steps" id="studyGuideSteps"></div>
+                <div class="gain-row">
+                  <span class="gain-chip" id="studyGuideD1Gain">+0.0 pp</span>
+                  <button type="button" class="btn btn-secondary" onclick="goToLancar()">Registrar bloco ao terminar</button>
+                </div>
+                <p class="helper-text" id="studyGuideStepsHelper">Gere o guia para ver as recomendações de hoje.</p>
+                <div id="studyGuidePlaceholder" class="study-guide-empty">
+                  <p>Gere o guia para ver a sequência completa de revisões automáticas.</p>
+                </div>
+                <ul class="timeline-list" id="studyGuideTimelineList"></ul>
+                <div class="timeline-summary">
+                  <span class="chip" id="studyGuideTotal7d">Total 7d: —</span>
+                  <span class="chip" id="studyGuideTotal28d">Total 28d: —</span>
+                </div>
               </div>
             </div>
-          </details>
-          <div class="study-guide-actions">
-            <button type="button" class="btn btn-primary" onclick="gerarGuiaEstudo()">Gerar Guia D1 → D2+</button>
-            <span id="studyGuideStatus" class="helper-text">Selecione um conteúdo para visualizar o roteiro.</span>
           </div>
-          <div class="study-guide-plan-summary">
-            <div class="plan-summary-header">
-              <h3>Plano diário atual</h3>
-              <p class="summary-helper" id="studyGuidePlannerHelper">Execute o planner na aba Revisões para distribuir o tempo do dia.</p>
+        </section>
+
+        <section class="flow-step" id="guideStepChecklist">
+          <div class="flow-step-head">
+            <span class="flow-step-index">3</span>
+            <div>
+              <h2>Marque seu progresso</h2>
+              <p class="flow-step-subtitle">Use o checklist para garantir que leitura, cards e questões foram concluídos.</p>
             </div>
-            <div class="planner-chips" id="studyGuidePlannerChips"></div>
           </div>
-        </div>
-      </div>
+          <div class="flow-step-body">
+            <div class="card">
+              <h3>Checklist do Conteúdo</h3>
+              <div class="study-checklists" id="studyGuideChecklistContainer"></div>
+              <p class="helper-text" id="studyGuideChecklistHelper">Gere o guia para receber tarefas marcáveis de hoje e das revisões.</p>
+            </div>
+          </div>
+        </section>
 
-      <div class="card">
-        <h2>Linha do Tempo de Estudo</h2>
-        <div class="study-timeline">
-          <div class="timeline-header">
-            <span class="chip" id="studyGuideStatusChip">Status: —</span>
-            <span class="chip" id="studyGuideStageChip">Etapa: —</span>
+        <section class="flow-step" id="guideStepInsights">
+          <div class="flow-step-head">
+            <span class="flow-step-index">4</span>
+            <div>
+              <h2>Entenda o diagnóstico</h2>
+              <p class="flow-step-subtitle">Confira estabilidade, recall previsto e como o sistema calculou cards e ganhos.</p>
+            </div>
           </div>
-          <div class="today-steps" id="studyGuideSteps"></div>
-          <div class="gain-row">
-            <span class="gain-chip" id="studyGuideD1Gain">+0.0 pp</span>
-            <button type="button" class="btn btn-secondary" onclick="goToLancar()">Registrar bloco ao terminar</button>
+          <div class="flow-step-body">
+            <div class="card">
+              <h3>Dicas &amp; Diagnóstico</h3>
+              <div class="study-diagnostics" id="studyGuideDiagnostics">
+                <p class="helper-text">Gere o guia para visualizar estabilidade, recall atual e métricas recentes.</p>
+              </div>
+              <div class="study-rationale" id="studyGuideRationale">
+                <span class="chip">Taxa de cards: —</span>
+                <span class="chip">Fator de dificuldade: —</span>
+                <span class="chip">Ajuste por acerto: —</span>
+              </div>
+            </div>
           </div>
-          <p class="helper-text" id="studyGuideStepsHelper">Gere o guia para ver as recomendações de hoje.</p>
-          <div id="studyGuidePlaceholder" class="study-guide-empty">
-            <p>Gere o guia para ver a sequência completa de revisões automáticas.</p>
-          </div>
-          <ul class="timeline-list" id="studyGuideTimelineList"></ul>
-          <div class="timeline-summary">
-            <span class="chip" id="studyGuideTotal7d">Total 7d: —</span>
-            <span class="chip" id="studyGuideTotal28d">Total 28d: —</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Checklist do Conteúdo</h2>
-        <div class="study-checklists" id="studyGuideChecklistContainer"></div>
-        <p class="helper-text" id="studyGuideChecklistHelper">Gere o guia para receber tarefas marcáveis de hoje e das revisões.</p>
-      </div>
-
-      <div class="card">
-        <h2>Dicas &amp; Diagnóstico</h2>
-        <div class="study-diagnostics" id="studyGuideDiagnostics">
-          <p class="helper-text">Gere o guia para visualizar estabilidade, recall atual e métricas recentes.</p>
-        </div>
-        <div class="study-rationale" id="studyGuideRationale">
-          <span class="chip">Taxa de cards: —</span>
-          <span class="chip">Fator de dificuldade: —</span>
-          <span class="chip">Ajuste por acerto: —</span>
-        </div>
+        </section>
       </div>
     </div>
-
     <div id="planejamentoSemanal" class="page">
       <div class="card">
         <h2>Planejamento Semanal</h2>
@@ -2416,6 +2605,7 @@
     let plannerAreas = [];
     let plannerSummary = { budget: 0, allocated: 0, delta: 0, mode: 'classic' };
     let plannerModeSelection = (localStorage.getItem('plannerMode') || 'power');
+    let flowSelectedAlvo = '';
     let weeklyPlanData = null;
     let retrospectiveSnapshot = null;
     let modeComparisonResult = null;
@@ -2942,9 +3132,149 @@
       }
     }
 
+    function updateDailyFlowSummary(highlightAlvo) {
+      const totalEl = document.getElementById('flowPlannerSummaryTotals');
+      const chipsEl = document.getElementById('flowPlannerSummaryChips');
+      const helperEl = document.getElementById('flowPlannerSummaryHelper');
+      const selectEl = document.getElementById('flowStudyGuideSelect');
+
+      if (!totalEl && !chipsEl && !helperEl && !selectEl) {
+        return;
+      }
+
+      const entries = plannerAllocations instanceof Map
+        ? Array.from(plannerAllocations.values()).filter(item => item && (Number(item.allocMin) || 0) > 0)
+        : [];
+      entries.sort((a, b) => (Number(b.allocMin) || 0) - (Number(a.allocMin) || 0));
+
+      const totalAlloc = entries.reduce((sum, item) => sum + (Number(item.allocMin) || 0), 0);
+      const totalDelta = entries.reduce((sum, item) => sum + (Number(item.deltaRpp) || 0), 0);
+      const hasPlan = entries.length > 0 && totalAlloc > 0;
+
+      const highlight = (highlightAlvo && highlightAlvo.trim()) || flowSelectedAlvo || '';
+
+      if (highlight && (!(plannerAllocations instanceof Map) || !plannerAllocations.has(highlight))) {
+        if (!highlightAlvo) {
+          flowSelectedAlvo = '';
+        }
+      }
+
+      if (totalEl) {
+        totalEl.textContent = hasPlan
+          ? `Total planejado: ${totalAlloc.toFixed(0)} min → +${totalDelta.toFixed(1)}%`
+          : 'Total planejado: —';
+      }
+
+      if (chipsEl) {
+        chipsEl.innerHTML = '';
+        if (!hasPlan) {
+          const chip = document.createElement('span');
+          chip.className = 'planner-chip';
+          chip.textContent = 'Nenhum plano calculado ainda.';
+          chipsEl.appendChild(chip);
+        } else {
+          entries.forEach(item => {
+            const chip = document.createElement('span');
+            chip.className = 'planner-chip';
+            if (highlight && item.alvo === highlight) {
+              chip.classList.add('selected');
+            }
+            const alloc = Number(item.allocMin) || 0;
+            const delta = Number(item.deltaRpp) || 0;
+            const areaLabel = item.area || getAreaFromAlvo(item.alvo);
+            chip.textContent = `${areaLabel}: ${alloc.toFixed(0)} min (+${delta.toFixed(1)}%)`;
+            chipsEl.appendChild(chip);
+          });
+        }
+      }
+
+      if (helperEl) {
+        if (!hasPlan) {
+          helperEl.textContent = 'Calcule o plano para liberar a lista de conteúdos com tempo sugerido.';
+        } else if (highlight && plannerAllocations.has(highlight)) {
+          const info = plannerAllocations.get(highlight) || {};
+          const alloc = Number(info.allocMin) || 0;
+          const delta = Number(info.deltaRpp) || 0;
+          helperEl.textContent = `${highlight}: ${alloc.toFixed(0)} min (+${delta.toFixed(1)}%) selecionado.`;
+        } else {
+          helperEl.textContent = `Tempo total planejado: ${totalAlloc.toFixed(0)} min → +${totalDelta.toFixed(1)}%.`;
+        }
+      }
+
+      if (selectEl) {
+        const prevValue = highlight || flowSelectedAlvo || selectEl.value || '';
+        selectEl.innerHTML = '';
+
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = hasPlan ? 'Selecione um alvo planejado' : 'Sem plano calculado ainda';
+        placeholder.selected = !hasPlan || !prevValue;
+        selectEl.appendChild(placeholder);
+
+        entries.forEach(item => {
+          const option = document.createElement('option');
+          option.value = item.alvo;
+          const alloc = Number(item.allocMin) || 0;
+          const delta = Number(item.deltaRpp) || 0;
+          option.textContent = `${item.alvo} · ${alloc.toFixed(0)} min (+${delta.toFixed(1)}%)`;
+          if (prevValue && item.alvo === prevValue) {
+            option.selected = true;
+          }
+          selectEl.appendChild(option);
+        });
+
+        selectEl.disabled = !hasPlan;
+        if (!selectEl.dataset.boundFlow) {
+          selectEl.addEventListener('change', () => {
+            flowSelectedAlvo = selectEl.value || '';
+            if (flowSelectedAlvo) {
+              refreshStudyGuidePlannerSummary(flowSelectedAlvo);
+            } else {
+              refreshStudyGuidePlannerSummary();
+            }
+          });
+          selectEl.dataset.boundFlow = '1';
+        }
+
+        if (hasPlan && prevValue && plannerAllocations.has(prevValue)) {
+          selectEl.value = prevValue;
+        }
+      }
+    }
+
     function refreshStudyGuidePlannerSummary(targetAlvo) {
-      const highlight = targetAlvo || (studyGuideState.plan && studyGuideState.plan.alvo) || null;
+      if (typeof targetAlvo === 'string' && targetAlvo.trim()) {
+        flowSelectedAlvo = targetAlvo.trim();
+      }
+      const highlight = targetAlvo || flowSelectedAlvo || (studyGuideState.plan && studyGuideState.plan.alvo) || null;
       updateStudyGuidePlannerSummary(highlight);
+      updateDailyFlowSummary(highlight);
+    }
+
+    function abrirGuiaDoFluxo() {
+      const selectEl = document.getElementById('flowStudyGuideSelect');
+      const alvo = selectEl ? (selectEl.value || '').trim() : '';
+      if (!alvo) {
+        toast('Escolha um alvo planejado para abrir o guia.', 'info');
+        return;
+      }
+
+      flowSelectedAlvo = alvo;
+      const tab = document.querySelector('.tab[data-page="guiaEstudo"]');
+      if (tab) {
+        tab.click();
+      } else {
+        switchPage('guiaEstudo');
+      }
+
+      setTimeout(() => {
+        const alvoInput = document.getElementById('studyGuideAlvo');
+        if (alvoInput) {
+          alvoInput.value = alvo;
+        }
+        refreshStudyGuidePlannerSummary(alvo);
+        gerarGuiaEstudo();
+      }, 120);
     }
 
     function renderStudyGuideChecklist(plan, options = {}) {
@@ -3500,6 +3830,7 @@
       const mode = toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic';
       plannerSummary = { budget: 0, allocated: 0, delta: 0, mode };
       modeComparisonResult = null;
+      flowSelectedAlvo = '';
       if (clearSummary) {
         updatePlannerSummaryUI();
         retrospectiveSnapshot = null;
@@ -4445,6 +4776,7 @@
 
           updatePlannerSummaryUI();
           renderFilaRevisoes(reviewQueue || []);
+          refreshStudyGuidePlannerSummary(flowSelectedAlvo);
 
           if (plannerSummary && Number(plannerSummary.budget) > 0) {
             compareModes(true);
