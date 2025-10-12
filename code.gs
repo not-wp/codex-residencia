@@ -27,7 +27,7 @@ const HEADERS = {
   REVER_HOJE: ['alvo', 'prioridade', 'proximaRevisao', 'estabilidade', 'feito'],
   MODEL: ['alvo', 'theta0', 'theta1', 'theta2', 'S_atual', 'ultima_atualizacao', 'sigma', 'n_eff', 'weibull_k'],
   REVISAO_LOG: ['data', 'alvo', 'tDias', 'metaUsada', 'p_prev', 'acertou', 'tempoSeg', 'difPercebida', 'flags', 'obs', 'total', 'acertos'],
-  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'kappaPriToDelta', 'fatigueFactor', 'lambdaSurprise', 'coverageTarget7d', 'powerAlphaScale', 'powerBetaScale', 'powerDiversityScale', 'maintAlphaScale', 'maintBetaScale', 'maintDiversityScale', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
+  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'flashcardsPerMinBase', 'minD1ReadMin', 'banditEnabledForGuide', 'kappaPriToDelta', 'fatigueFactor', 'lambdaSurprise', 'coverageTarget7d', 'powerAlphaScale', 'powerBetaScale', 'powerDiversityScale', 'maintAlphaScale', 'maintBetaScale', 'maintDiversityScale', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
   EXAM_CONFIG: ['area', 'peso', 'dataProva'],
   POLICY_LOG: ['timestamp', 'alvo', 'area', 'subarea', 'pri', 'eviPerMin', 'overdue', 'diversity', 'custos', 'tempoPrev', 'decisao', 'policyVersion'],
   EFFECTS: ['alvo', 'ATE_pct', 'lo', 'hi', 'n_pairs', 'updated']
@@ -52,6 +52,9 @@ const DEFAULT_SETTINGS = {
   shrinkageC: 8.0,
   lambdaDiversity: 0.25,
   planGainMix: 0.5,
+  flashcardsPerMinBase: 2.0,
+  minD1ReadMin: 15,
+  banditEnabledForGuide: true,
   kappaPriToDelta: 0.2,
   fatigueFactor: 0.3,
   lambdaSurprise: 0.4,
@@ -3184,6 +3187,548 @@ function computeStudyGuidePlanForTarget(alvoRaw, budgetMin, prefs, settings, dat
       totalDeltaRpp7d: Math.round(total7 * 10) / 10,
       totalDeltaRpp28d: Math.round(total28 * 10) / 10
     }
+  };
+}
+
+function apiStudyGuidePlanV2(params) {
+  try {
+    const settings = apiGetSettings();
+    const payload = params || {};
+    const alvoRaw = (payload.alvo || '').toString().trim();
+    if (!alvoRaw) {
+      return { ok: false, error: 'Alvo inválido' };
+    }
+
+    const budgetInput = parseFloat(payload.budgetMin !== undefined ? payload.budgetMin : payload.budgetD1Min);
+    const budgetMin = isFinite(budgetInput) && budgetInput > 0 ? budgetInput : 0;
+
+    const prefsInput = payload.prefs || payload.preferencias || {};
+    const flashRateSetting = settings.flashcardsPerMinBase !== undefined ? parseFloat(settings.flashcardsPerMinBase) : DEFAULT_SETTINGS.flashcardsPerMinBase;
+    const readShareDefault = prefsInput.readShare !== undefined ? prefsInput.readShare : 0.35;
+    const prefs = {
+      flashcardsPerMinBase: prefsInput.flashcardsPerMinBase !== undefined ? prefsInput.flashcardsPerMinBase : flashRateSetting,
+      blockQuestionsTarget: prefsInput.blockQuestionsTarget !== undefined ? prefsInput.blockQuestionsTarget : 25,
+      readShare: readShareDefault
+    };
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const planningSettings = Object.assign({}, settings);
+    const data = buildStudyGuideData(planningSettings);
+    const logRows = readSheetData(SHEET_NAMES.LOG);
+    const revisaoRows = readSheetData(SHEET_NAMES.REVISAO_LOG);
+    const examConfig = readSheetData(SHEET_NAMES.EXAM_CONFIG);
+
+    const plan = computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, planningSettings, data, logRows, revisaoRows, examConfig, today);
+    if (!plan) {
+      return { ok: false, error: 'Alvo não encontrado ou sem dados suficientes' };
+    }
+    return Object.assign({ ok: true }, plan);
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logRows, revisaoRows, examConfig, today) {
+  if (!alvoRaw || !settings || !data) return null;
+  const alvoKey = alvoRaw.toString().trim();
+  if (!alvoKey) return null;
+
+  const parts = parseAlvoParts(alvoKey);
+  let area = parts.area;
+  let subarea = parts.subarea;
+
+  const statsRow = resolveStatsRow(data.statsMap, area, subarea);
+  if (statsRow) {
+    area = area || (statsRow.area || '').toString().trim();
+    subarea = subarea || (statsRow.subarea || '').toString().trim();
+  }
+
+  const spacedRow = resolveSpacedRow(data.spacedMap, alvoKey);
+  const modelRow = resolveModelRow(data.modelMap, alvoKey);
+  const reviewWrapper = data.reviewMap && data.reviewMap[alvoKey] ? data.reviewMap[alvoKey] : null;
+  const reviewEntry = reviewWrapper ? reviewWrapper.entry : null;
+
+  const budgetMinutes = Math.max(0, Math.round(budgetMin || 0));
+
+  const flashRateRaw = parseFloat(prefs.flashcardsPerMinBase);
+  const flashRate = isFinite(flashRateRaw) ? clamp(flashRateRaw, 0.5, 5) : DEFAULT_SETTINGS.flashcardsPerMinBase;
+  const blockTargetRaw = parseFloat(prefs.blockQuestionsTarget);
+  const blockTarget = isFinite(blockTargetRaw) ? clamp(blockTargetRaw, 5, 120) : 25;
+  let readShareRaw = prefs.readShare;
+  if (isFinite(readShareRaw) && readShareRaw > 1) {
+    readShareRaw = readShareRaw / 100;
+  }
+  const readShare = isFinite(readShareRaw) ? clamp(readShareRaw, 0.1, 0.6) : 0.35;
+
+  const Smin = parseFloat(settings.Smin);
+  const retentionTarget = parseFloat(settings.retentionTarget);
+  const kappaInput = settings.kappaPriToDelta !== undefined ? parseFloat(settings.kappaPriToDelta) : DEFAULT_SETTINGS.kappaPriToDelta;
+  const kappaPriToDelta = isFinite(kappaInput) ? kappaInput : DEFAULT_SETTINGS.kappaPriToDelta;
+  const minReadSetting = settings.minD1ReadMin !== undefined ? parseFloat(settings.minD1ReadMin) : DEFAULT_SETTINGS.minD1ReadMin;
+  const guideBanditEnabled = settings.banditEnabledForGuide !== undefined ? asBoolean(settings.banditEnabledForGuide) : DEFAULT_SETTINGS.banditEnabledForGuide;
+
+  const todayDate = new Date(today || new Date());
+  todayDate.setHours(0, 0, 0, 0);
+  const msPerDay = 1000 * 60 * 60 * 24;
+
+  const useWeibull = asBoolean(settings.useWeibull);
+  const weibullShape = useWeibull && modelRow && modelRow.weibull_k !== undefined
+    ? (isFinite(parseFloat(modelRow.weibull_k)) ? parseFloat(modelRow.weibull_k) : 1)
+    : 1;
+
+  let estabilidade = null;
+  if (spacedRow && spacedRow.estabilidade !== undefined && spacedRow.estabilidade !== '') {
+    const value = parseFloat(spacedRow.estabilidade);
+    if (isFinite(value)) {
+      estabilidade = value;
+    }
+  }
+  if (!isFinite(estabilidade) && modelRow && modelRow.S_atual !== undefined) {
+    const value = parseFloat(modelRow.S_atual);
+    if (isFinite(value)) {
+      estabilidade = value;
+    }
+  }
+  if (!isFinite(estabilidade)) {
+    estabilidade = isFinite(Smin) ? Smin : DEFAULT_SETTINGS.Smin;
+  }
+
+  const tempoMedioSec = statsRow && statsRow.tempo_medio !== undefined ? parseFloat(statsRow.tempo_medio) : null;
+  const tempoMedioMin = isFinite(tempoMedioSec) && tempoMedioSec > 0 ? tempoMedioSec / 60 : 1;
+  const difMedia = statsRow && statsRow.dif_media !== undefined ? parseFloat(statsRow.dif_media) : 3;
+  const acerto28 = statsRow && statsRow.acerto_28d !== undefined ? parseFloat(statsRow.acerto_28d) : (statsRow && statsRow.acerto_vida !== undefined ? parseFloat(statsRow.acerto_vida) : 0.65);
+
+  const historyInfo = gatherGuideHistoryInfo(alvoKey, area, subarea, spacedRow, logRows, revisaoRows);
+  const lastReviewDate = historyInfo.lastDate ? new Date(historyInfo.lastDate.getTime()) : null;
+  const lapses = spacedRow && spacedRow.lapses !== undefined ? parseFloat(spacedRow.lapses) : NaN;
+
+  let daysSinceLast = null;
+  if (lastReviewDate instanceof Date && !isNaN(lastReviewDate)) {
+    lastReviewDate.setHours(0, 0, 0, 0);
+    daysSinceLast = Math.max(0, Math.floor((todayDate - lastReviewDate) / msPerDay));
+  }
+
+  let recallToday = null;
+  if (daysSinceLast !== null && isFinite(daysSinceLast)) {
+    recallToday = calcRecall(daysSinceLast, Math.max(1, estabilidade), weibullShape);
+  }
+  if (!isFinite(recallToday)) {
+    recallToday = 0.4;
+  }
+  recallToday = clamp(recallToday, 0, 1);
+
+  const modelNEff = modelRow && modelRow.n_eff !== undefined ? parseFloat(modelRow.n_eff) : NaN;
+  const hasSheetHistory = !!statsRow || !!spacedRow || !!modelRow;
+  const fallbackNEffBase = historyInfo.totalCount;
+  const fallbackNEff = fallbackNEffBase > 0 ? fallbackNEffBase : (hasSheetHistory ? 1 : 0);
+  const nEff = isFinite(modelNEff) && modelNEff >= 0 ? modelNEff : fallbackNEff;
+
+  const hasHistoryFlag = hasSheetHistory || historyInfo.hasHistory;
+  const status = hasHistoryFlag ? 'HISTORICO' : 'NOVO';
+  let stage = status === 'NOVO' ? 'D1' : 'S2';
+  if (status === 'HISTORICO') {
+    stage = determineGuideStage(nEff, daysSinceLast, recallToday, lapses);
+  }
+
+  const totalMinutes = budgetMinutes;
+  const tempoQuest = Math.max(tempoMedioMin, 0.5);
+
+  let planToday;
+  let usesBandit = false;
+  let rationaleExtra = {};
+
+  if (status === 'NOVO') {
+    const minRead = isFinite(minReadSetting) ? Math.max(5, Math.round(minReadSetting)) : 15;
+    let readMin = Math.round(totalMinutes * readShare);
+    if (readMin < minRead && totalMinutes >= minRead) {
+      readMin = minRead;
+    }
+    if (readMin > totalMinutes) {
+      readMin = Math.max(0, Math.min(totalMinutes, minRead));
+    }
+
+    let remaining = Math.max(0, totalMinutes - readMin);
+    let blockMin = Math.round(remaining * 0.45);
+    if (blockMin < 20 && remaining >= 20) {
+      blockMin = 20;
+    }
+    if (blockMin > remaining) {
+      blockMin = remaining;
+    }
+    remaining = Math.max(0, totalMinutes - readMin - blockMin);
+    let flashMin = Math.round(remaining);
+    if (readMin + blockMin + flashMin !== totalMinutes) {
+      const diff = totalMinutes - (readMin + blockMin + flashMin);
+      flashMin = Math.max(0, flashMin + diff);
+      if (flashMin < 0) {
+        blockMin = Math.max(0, blockMin + flashMin);
+        flashMin = 0;
+      }
+      if (blockMin < 0) {
+        readMin = Math.max(0, readMin + blockMin);
+        blockMin = 0;
+      }
+    }
+
+    const difFactor = clamp(1 + 0.1 * (difMedia - 3), 0.6, 1.4);
+    let acertoFactor = 1;
+    if (isFinite(acerto28)) {
+      if (acerto28 < 0.6) acertoFactor = 1.1;
+      else if (acerto28 > 0.8) acertoFactor = 0.9;
+    }
+    const flashcardsRaw = flashMin > 0 ? flashRate * flashMin * difFactor * acertoFactor : 0;
+    const flashcardsCreate = flashMin > 0 ? Math.round(clamp(flashcardsRaw, 20, 120)) : 0;
+
+    let questionsNew = 0;
+    let questionsEstMin = Math.round(blockMin);
+    if (blockMin > 0) {
+      const maxByTime = Math.max(1, Math.floor(blockMin / tempoQuest));
+      questionsNew = Math.max(5, Math.round(Math.min(blockTarget, maxByTime)));
+      questionsEstMin = Math.round(questionsNew * tempoQuest);
+      if (questionsEstMin > blockMin) {
+        questionsEstMin = Math.round(blockMin);
+      }
+    }
+
+    const deltaRpp = Math.max(0, 100 * kappaPriToDelta * (1 - recallToday));
+    planToday = {
+      readMin: Math.round(readMin),
+      flashcardsCreate,
+      flashcardsReviewMin: 0,
+      questionsNew,
+      questionsEstMin: Math.round(Math.max(questionsEstMin, blockMin)),
+      deltaRpp,
+      totalMin: totalMinutes,
+      rationale: {
+        base: 'novo',
+        stage: 'D1',
+        usesBandit: false,
+        cardsRate: flashRate,
+        difficultyFactor: difFactor,
+        accuracyAdj: acertoFactor,
+        readShare
+      }
+    };
+    rationaleExtra = planToday.rationale;
+  } else {
+    let reviewMin = Math.round(Math.min(20, totalMinutes * 0.15));
+    if (stage === 'S3') {
+      reviewMin = Math.max(reviewMin, Math.round(Math.min(30, totalMinutes * 0.25)));
+    }
+    if (stage === 'S1') {
+      reviewMin = Math.max(reviewMin, Math.round(Math.min(20, totalMinutes * 0.2)));
+    }
+    reviewMin = Math.min(reviewMin, totalMinutes);
+
+    const remainingAfterReview = Math.max(0, totalMinutes - reviewMin);
+    let questionShare = 0.5;
+    if (stage === 'S1') questionShare = 0.6;
+    if (stage === 'S3') questionShare = 0.35;
+    let questionsMin = Math.round(remainingAfterReview * questionShare);
+    if (remainingAfterReview > 0 && questionsMin < 15) {
+      questionsMin = Math.min(remainingAfterReview, 15);
+    }
+    if (questionsMin > remainingAfterReview) {
+      questionsMin = remainingAfterReview;
+    }
+
+    const creationMin = Math.max(0, remainingAfterReview - questionsMin);
+
+    const cardsErroBase = isFinite(acerto28) ? Math.round((1 - acerto28) * 40) : 30;
+    const flashcardsCreate = Math.max(10, Math.min(60, cardsErroBase));
+
+    let questionsNew = 0;
+    let questionsEstMin = Math.round(questionsMin);
+    if (questionsMin > 0) {
+      const possible = Math.floor(questionsMin / tempoQuest);
+      questionsNew = Math.max(5, possible);
+      if (questionsNew <= 0 && questionsMin > 0) {
+        questionsNew = Math.max(5, Math.round(questionsMin / tempoQuest));
+      }
+      questionsEstMin = Math.round(questionsNew * tempoQuest);
+      if (questionsEstMin > remainingAfterReview) {
+        const adjusted = Math.floor(remainingAfterReview / tempoQuest);
+        questionsNew = Math.max(3, adjusted);
+        questionsEstMin = Math.round(questionsNew * tempoQuest);
+      }
+    }
+
+    const horizonDays = determineHorizonDays(todayDate, examConfig);
+    const components = guideResolveEviComponents(alvoKey, settings, statsRow, spacedRow, modelRow, reviewEntry, todayDate, horizonDays);
+    let deltaPerMin = 0;
+    if (guideBanditEnabled && asBoolean(settings.useAdvancedPriority)) {
+      const eviLCB = components && components.eviLCBPerMin !== null && components.eviLCBPerMin !== undefined ? parseFloat(components.eviLCBPerMin) : null;
+      const eviMean = components && components.eviPerMinMean !== null && components.eviPerMinMean !== undefined ? parseFloat(components.eviPerMinMean) : null;
+      const candidate = asBoolean(settings.useGainLCB) ? eviLCB : eviMean;
+      if (isFinite(candidate) && candidate > 0) {
+        deltaPerMin = candidate;
+        usesBandit = true;
+      }
+    }
+    if (!usesBandit) {
+      deltaPerMin = Math.max(0, kappaPriToDelta * (1 - recallToday) / Math.max(1, totalMinutes));
+    }
+
+    const effectiveMinutes = Math.max(1, totalMinutes);
+    const deltaRpp = Math.max(0, Math.round(deltaPerMin * effectiveMinutes * 1000) / 10);
+
+    planToday = {
+      readMin: 0,
+      flashcardsCreate,
+      flashcardsReviewMin: Math.round(reviewMin),
+      questionsNew: Math.max(0, Math.round(questionsNew)),
+      questionsEstMin: Math.round(Math.max(questionsEstMin, questionsMin)),
+      deltaRpp,
+      totalMin: totalMinutes,
+      rationale: {
+        base: 'historico',
+        stage,
+        usesBandit,
+        reviewShare: reviewMin / Math.max(1, totalMinutes),
+        questionShare: questionsMin / Math.max(1, totalMinutes),
+        creationShare: creationMin / Math.max(1, totalMinutes),
+        fallback: !usesBandit
+      }
+    };
+    rationaleExtra = planToday.rationale;
+  }
+
+  const perMinuteGainPP = planToday && planToday.totalMin > 0 ? (planToday.deltaRpp || 0) / Math.max(1, planToday.totalMin) : 0;
+  const reviewsProjection = simulateGuideReviews(estabilidade, retentionTarget, weibullShape, perMinuteGainPP, planToday.totalMin, todayDate, spacedRow);
+
+  return {
+    alvo: alvoKey,
+    area,
+    subarea,
+    status,
+    stage,
+    diagnostics: {
+      S: estabilidade,
+      Rhoje: recallToday,
+      tempoMedio: tempoMedioMin,
+      acerto_28d: acerto28,
+      difMedia,
+      n_eff: nEff
+    },
+    planToday,
+    nextReviews: reviewsProjection.nextReviews,
+    totalDeltaRpp7d: reviewsProjection.total7d,
+    totalDeltaRpp28d: reviewsProjection.total28d,
+    rationale: rationaleExtra
+  };
+}
+
+function resolveStatsRow(statsMap, area, subarea) {
+  if (!statsMap) return null;
+  const key = `${(area || '').toString().trim()}::${(subarea || '').toString().trim()}`;
+  if (statsMap[key]) return statsMap[key];
+  const lower = key.toLowerCase();
+  const matchKey = Object.keys(statsMap).find(k => k && k.toLowerCase() === lower);
+  return matchKey ? statsMap[matchKey] : null;
+}
+
+function resolveSpacedRow(spacedMap, alvoKey) {
+  if (!spacedMap) return null;
+  if (spacedMap[alvoKey]) return spacedMap[alvoKey];
+  const lower = alvoKey.toLowerCase();
+  const matchKey = Object.keys(spacedMap).find(k => k && k.toLowerCase() === lower);
+  return matchKey ? spacedMap[matchKey] : null;
+}
+
+function resolveModelRow(modelMap, alvoKey) {
+  if (!modelMap) return null;
+  if (modelMap[alvoKey]) return modelMap[alvoKey];
+  const lower = alvoKey.toLowerCase();
+  const matchKey = Object.keys(modelMap).find(k => k && k.toLowerCase() === lower);
+  return matchKey ? modelMap[matchKey] : null;
+}
+
+function determineGuideStage(nEff, daysSinceLast, recallToday, lapses) {
+  const eff = isFinite(nEff) ? nEff : 0;
+  const days = isFinite(daysSinceLast) ? daysSinceLast : null;
+  const recall = isFinite(recallToday) ? recallToday : 0.5;
+  const laps = isFinite(lapses) ? lapses : 0;
+  if (eff < 10 || (days !== null && days <= 7)) {
+    return 'S1';
+  }
+  if (eff > 30 && recall >= 0.75 && laps <= 3) {
+    return 'S3';
+  }
+  return 'S2';
+}
+
+function gatherGuideHistoryInfo(alvoKey, area, subarea, spacedRow, logRows, revisaoRows) {
+  const info = {
+    hasHistory: false,
+    totalCount: 0,
+    lastDate: null
+  };
+
+  const normalizedArea = (area || '').toString().trim().toLowerCase();
+  const normalizedSub = (subarea || '').toString().trim().toLowerCase();
+
+  const updateDate = (date) => {
+    if (!date || !(date instanceof Date) || isNaN(date)) return;
+    if (!info.lastDate || date > info.lastDate) {
+      info.lastDate = new Date(date.getTime());
+    }
+  };
+
+  if (spacedRow) {
+    info.hasHistory = true;
+    if (spacedRow.ultimaRevisao) {
+      const ultima = parseSheetDate(spacedRow.ultimaRevisao);
+      if (ultima) updateDate(ultima);
+    }
+  }
+
+  if (revisaoRows && revisaoRows.length) {
+    revisaoRows.forEach(row => {
+      if (!row) return;
+      const alvoRow = (row.alvo || '').toString().trim().toLowerCase();
+      if (alvoRow && alvoRow === alvoKey.toLowerCase()) {
+        info.hasHistory = true;
+        info.totalCount += 1;
+        const data = parseSheetDate(row.data);
+        if (data) updateDate(data);
+        return;
+      }
+      if (!normalizedArea && !normalizedSub) return;
+      const parts = parseAlvoParts(row.alvo || '');
+      const areaMatch = parts.area && parts.area.toLowerCase() === normalizedArea;
+      const subMatch = parts.subarea && parts.subarea.toLowerCase() === normalizedSub;
+      if ((normalizedArea && areaMatch) || (normalizedSub && subMatch)) {
+        info.hasHistory = true;
+        info.totalCount += 1;
+        const data = parseSheetDate(row.data);
+        if (data) updateDate(data);
+      }
+    });
+  }
+
+  if (logRows && logRows.length) {
+    logRows.forEach(row => {
+      if (!row) return;
+      const areaRow = (row.area || '').toString().trim().toLowerCase();
+      const subRow = (row.subarea || '').toString().trim().toLowerCase();
+      if ((normalizedArea && areaRow === normalizedArea) && (normalizedSub && subRow === normalizedSub)) {
+        info.hasHistory = true;
+        info.totalCount += 1;
+        const data = parseSheetDate(row.data);
+        if (data) updateDate(data);
+      }
+    });
+  }
+
+  if (!info.hasHistory && info.totalCount > 0) {
+    info.hasHistory = true;
+  }
+
+  if (info.totalCount === 0 && info.hasHistory) {
+    info.totalCount = 1;
+  }
+
+  if (!info.hasHistory) {
+    info.totalCount = 0;
+  }
+
+  return info;
+}
+
+function guideResolveEviComponents(alvoKey, settings, statsRow, spacedRow, modelRow, reviewEntry, today, horizonDays) {
+  if (reviewEntry && reviewEntry.components) {
+    return {
+      eviLCBPerMin: reviewEntry.components.eviPerMin !== undefined ? reviewEntry.components.eviPerMin : null,
+      eviPerMinMean: reviewEntry.components.eviPerMinMean !== undefined ? reviewEntry.components.eviPerMinMean : null
+    };
+  }
+
+  const pseudo = spacedRow ? Object.assign({}, spacedRow) : { alvo: alvoKey };
+  if (!pseudo.alvo) pseudo.alvo = alvoKey;
+  if (pseudo.estabilidade === undefined || pseudo.estabilidade === '') {
+    const SfromModel = modelRow && modelRow.S_atual !== undefined ? parseFloat(modelRow.S_atual) : null;
+    pseudo.estabilidade = isFinite(SfromModel) ? SfromModel : settings.Smin;
+  }
+  if (!pseudo.ultimaRevisao && modelRow && modelRow.ultima_atualizacao) {
+    pseudo.ultimaRevisao = modelRow.ultima_atualizacao;
+  }
+
+  const extras = {
+    modelRow: modelRow || null,
+    horizonDays: horizonDays,
+    residualValue: null,
+    surpriseLambda: settings.lambdaSurprise,
+    coverage7d: 0,
+    meta7d: settings.coverageTarget7d !== undefined ? parseFloat(settings.coverageTarget7d) : 0
+  };
+
+  const result = calculatePriorityForRow(pseudo, statsRow || null, settings, today, extras);
+  if (result && result.components) {
+    return {
+      eviLCBPerMin: result.components.eviPerMin !== undefined ? result.components.eviPerMin : null,
+      eviPerMinMean: result.components.eviPerMinMean !== undefined ? result.components.eviPerMinMean : null
+    };
+  }
+  return {
+    eviLCBPerMin: null,
+    eviPerMinMean: null
+  };
+}
+
+function simulateGuideReviews(S, retentionTarget, weibullK, deltaPerMinPP, totalMinutes, today, spacedRow) {
+  let baseS = isFinite(S) && S > 0 ? S : DEFAULT_SETTINGS.Smin;
+  const meta = isFinite(retentionTarget) && retentionTarget > 0 ? retentionTarget : DEFAULT_SETTINGS.retentionTarget;
+  const shape = isFinite(weibullK) && weibullK > 0 ? weibullK : 1;
+  const basePerMin = isFinite(deltaPerMinPP) ? Math.max(0, deltaPerMinPP) : 0;
+  const msPerDay = 1000 * 60 * 60 * 24;
+  let firstInterval = calcOptimalInterval(baseS, meta, shape);
+
+  if (spacedRow && spacedRow.proximaRevisao) {
+    const proxima = parseSheetDate(spacedRow.proximaRevisao);
+    if (proxima) {
+      const offset = Math.max(1, Math.round((proxima - today) / msPerDay));
+      firstInterval = Math.max(1, offset);
+    }
+  }
+
+  let firstOffset = isFinite(firstInterval) ? Math.round(firstInterval) : 2;
+  if (!isFinite(firstOffset) || firstOffset <= 0) {
+    firstOffset = 2;
+  }
+
+  const offsets = [
+    firstOffset,
+    Math.max(firstOffset + 3, Math.round(firstOffset * 2)),
+    Math.max(firstOffset + 7, Math.round(firstOffset * 1.5))
+  ];
+
+  const uniqueOffsets = [];
+  offsets.forEach(off => {
+    const val = Math.max(1, Math.round(off));
+    if (uniqueOffsets.indexOf(val) === -1) {
+      uniqueOffsets.push(val);
+    }
+  });
+
+  const nextReviews = [];
+  let total7d = 0;
+  let total28d = 0;
+  uniqueOffsets.slice(0, 3).forEach((offset, idx) => {
+    const estMin = offset <= 3 ? 15 : 20;
+    const tipo = offset <= 3 ? 'curta' : 'media';
+    const decay = Math.pow(0.85, idx);
+    const delta = Math.max(0, Math.round(basePerMin * estMin * decay * 10) / 10);
+    if (offset <= 7) total7d += delta;
+    if (offset <= 28) total28d += delta;
+    nextReviews.push({ diaOffset: offset, tipo, estMin, deltaRpp: delta });
+  });
+
+  return {
+    nextReviews,
+    total7d,
+    total28d
   };
 }
 
