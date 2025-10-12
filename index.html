@@ -990,8 +990,12 @@
             <input type="number" id="setBetaUnc" step="0.01">
           </div>
           <div class="form-group">
-            <label>Penalidade Diversidade (λ)</label>
+            <label>Shrinkage clássico (λ)</label>
             <input type="number" id="setShrinkageC" step="0.1">
+          </div>
+          <div class="form-group">
+            <label>Peso Diversidade (λ<sub>div</sub>)</label>
+            <input type="number" id="setLambdaDiv" step="0.01">
           </div>
           <div class="form-group">
             <label>Mix Ganho Planejado</label>
@@ -1977,6 +1981,7 @@
       document.getElementById('setReviewWeight').value = settings.reviewOutcomeWeight || 3.0;
       document.getElementById('setBetaUnc').value = settings.betaUncertainty || 0.5;
       document.getElementById('setShrinkageC').value = settings.shrinkageC || 8.0;
+      document.getElementById('setLambdaDiv').value = settings.lambdaDiversity || 0;
       document.getElementById('setPlanGainMix').value = settings.planGainMix || 0.5;
       document.getElementById('setUseAdvancedPriority').checked = toBool(settings.useAdvancedPriority);
       document.getElementById('setUseGainLCB').checked = toBool(settings.useGainLCB);
@@ -2005,6 +2010,7 @@
         Imax: parseFloat(document.getElementById('setImax').value),
         betaUncertainty: parseFloat(document.getElementById('setBetaUnc').value),
         shrinkageC: parseFloat(document.getElementById('setShrinkageC').value),
+        lambdaDiversity: parseFloat(document.getElementById('setLambdaDiv').value),
         planGainMix: parseFloat(document.getElementById('setPlanGainMix').value),
         useAdvancedPriority: document.getElementById('setUseAdvancedPriority').checked,
         useGainLCB: document.getElementById('setUseGainLCB').checked,

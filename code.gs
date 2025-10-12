@@ -27,7 +27,7 @@ const HEADERS = {
   REVER_HOJE: ['alvo', 'prioridade', 'proximaRevisao', 'estabilidade', 'feito'],
   MODEL: ['alvo', 'theta0', 'theta1', 'theta2', 'S_atual', 'ultima_atualizacao', 'sigma', 'n_eff'],
   REVISAO_LOG: ['data', 'alvo', 'tDias', 'metaUsada', 'p_prev', 'acertou', 'tempoSeg', 'difPercebida', 'flags', 'obs', 'total', 'acertos'],
-  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'planGainMix', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
+  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
   EXAM_CONFIG: ['area', 'peso', 'dataProva'],
   POLICY_LOG: ['timestamp', 'alvo', 'area', 'subarea', 'pri', 'eviPerMin', 'overdue', 'diversity', 'custos', 'tempoPrev', 'decisao', 'policyVersion'],
   EFFECTS: ['alvo', 'ATE_pct', 'lo', 'hi', 'n_pairs', 'updated']
@@ -50,6 +50,7 @@ const DEFAULT_SETTINGS = {
   Imax: 90,
   betaUncertainty: 0.50,
   shrinkageC: 8.0,
+  lambdaDiversity: 0.25,
   planGainMix: 0.5,
   useAdvancedPriority: false,
   useGainLCB: true,
@@ -353,6 +354,8 @@ function apiSaveSettings(obj) {
     if (!isFinite(obj.betaUncertainty)) obj.betaUncertainty = DEFAULT_SETTINGS.betaUncertainty;
     obj.shrinkageC = parseFloat(obj.shrinkageC);
     if (!isFinite(obj.shrinkageC)) obj.shrinkageC = DEFAULT_SETTINGS.shrinkageC;
+    obj.lambdaDiversity = parseFloat(obj.lambdaDiversity);
+    if (!isFinite(obj.lambdaDiversity)) obj.lambdaDiversity = DEFAULT_SETTINGS.lambdaDiversity;
     obj.planGainMix = clamp(parseFloat(obj.planGainMix), 0, 1);
     if (!isFinite(obj.planGainMix)) obj.planGainMix = DEFAULT_SETTINGS.planGainMix;
     obj.useAdvancedPriority = asBoolean(obj.useAdvancedPriority);
@@ -1110,18 +1113,52 @@ function calculateClassicPriority(context, settings) {
   };
 }
 
-function estimateExpectedDeltaS(modelRow, settings, context) {
-  if (!modelRow) {
-    return Math.max(0.05 * context.S, 0.1);
+function estimateDeltaSStats(context, modelRow, settings) {
+  const baseMean = Math.max(0.05 * context.S, 0.1);
+  let mean = baseMean;
+  let variance = Math.pow(baseMean * 0.5, 2);
+
+  if (modelRow) {
+    const sigma = parseFloat(modelRow.sigma);
+    const nEff = parseFloat(modelRow.n_eff);
+    const sigmaAbs = isNaN(sigma) ? 0.2 : Math.max(0.01, Math.abs(sigma));
+    const effective = isNaN(nEff) ? 1 : Math.max(0.25, nEff);
+    const weight = settings.reviewOutcomeWeight || 1;
+    const mix = settings.planGainMix || 0.5;
+    const scale = clamp(weight * mix / effective, 0.02, 1);
+    mean = clamp(sigmaAbs * context.S * scale, 0.05, context.S * 0.75);
+    variance = Math.max(variance, Math.pow(mean * 0.5, 2));
   }
-  const sigma = parseFloat(modelRow.sigma);
-  const nEff = parseFloat(modelRow.n_eff);
-  const sigmaAbs = isNaN(sigma) ? 0.1 : Math.max(0.01, Math.abs(sigma));
-  const effective = isNaN(nEff) ? 1 : Math.max(0.25, nEff);
-  const weight = settings.reviewOutcomeWeight || 1;
-  const mix = settings.planGainMix || 0.5;
-  const scale = clamp(weight * mix / effective, 0.02, 1);
-  return clamp(sigmaAbs * context.S * scale, 0.05, context.S * 0.75);
+
+  if (asBoolean(settings.useRLSKalman) && context && context.alvo) {
+    try {
+      const xVec = [1, clamp(context.competencia || 0.5, 0, 1), clamp(context.difNorm || 0, 0, 1)];
+      const state = ensureRlsState(context.alvo, xVec.length, settings);
+      if (state && Array.isArray(state.P)) {
+        const Px = multiplyMatrixVector(state.P, xVec);
+        const leverage = Math.max(0, dotProduct(xVec, Px));
+        let sigma2State = state.sigma2;
+        if (!isFinite(sigma2State) || sigma2State <= 0) {
+          const sigmaFallback = modelRow && modelRow.sigma !== undefined ? Math.max(0.01, Math.abs(parseFloat(modelRow.sigma))) : 0.2;
+          sigma2State = sigmaFallback * sigmaFallback;
+        }
+        const varLnS = Math.max(0, leverage * sigma2State);
+        const baseS = Math.max(1, context.S);
+        const varS = Math.pow(baseS, 2) * varLnS;
+        if (isFinite(varS) && varS > 0) {
+          variance = Math.max(variance, varS);
+        }
+      }
+    } catch (err) {
+      // Se algo falhar, mantém variância básica
+    }
+  }
+
+  const minVar = Math.pow(baseMean * 0.25, 2);
+  const maxVar = Math.pow(context.S * 0.75, 2);
+  variance = clamp(variance, minVar, maxVar);
+
+  return { mean, variance };
 }
 
 function determineHorizonDays(referenceDate, examConfig) {
@@ -1152,17 +1189,19 @@ function calculateAdvancedPriority(context, settings, extras) {
 
   const modelRow = extras && extras.modelRow ? extras.modelRow : null;
   const horizonDays = extras && extras.horizonDays ? Math.max(1, extras.horizonDays) : 42;
-  const expectedDeltaS = estimateExpectedDeltaS(modelRow, settings, context);
+  const deltaStats = estimateDeltaSStats(context, modelRow, settings);
   const S = Math.max(context.S, 1);
   const derivative = (horizonDays / (S * S)) * Math.exp(-horizonDays / S);
-  const deltaR = derivative * expectedDeltaS;
+  const deltaR = derivative * (deltaStats.mean || 0);
+  const deltaRVar = derivative * derivative * Math.max(0, deltaStats.variance || 0);
   const tempoMin = Math.max(context.tempoPrevSeg / 60, 0.25);
-  let eviPerMin = deltaR / tempoMin;
+  const eviMean = deltaR / tempoMin;
+  const sdEvi = Math.sqrt(Math.max(0, deltaRVar)) / tempoMin;
+  let eviPerMin = eviMean;
 
   if (asBoolean(settings.useGainLCB)) {
-    const sigma = modelRow && modelRow.sigma !== undefined ? Math.abs(parseFloat(modelRow.sigma)) || 0 : 0;
     const beta = settings.betaUncertainty || 0;
-    eviPerMin -= beta * sigma;
+    eviPerMin = eviMean - beta * sdEvi;
   }
 
   const custos =
@@ -1171,20 +1210,22 @@ function calculateAdvancedPriority(context, settings, extras) {
     settings.wDif * context.difNorm;
 
   const overdueComponent = context.overdueValue;
-  let diversityPenalty = 0;
-  if (extras && extras.diversityPenalty) {
-    diversityPenalty = extras.diversityPenalty;
+  let diversityBoost = 0;
+  if (extras && extras.diversityBoost) {
+    diversityBoost = extras.diversityBoost;
   }
 
-  const score = eviPerMin + overdueComponent - diversityPenalty + custos;
+  const score = eviPerMin + overdueComponent + diversityBoost + custos;
 
   return {
     score,
     components: {
       eviPerMin,
+      eviMean,
+      eviStd: sdEvi,
       overdue: overdueComponent,
       custos,
-      diversity: diversityPenalty,
+      diversity: diversityBoost,
       tempoPrev: context.tempoPrevSeg,
       deltaR
     }
@@ -1299,6 +1340,9 @@ function apiMakeReviewToday() {
       }
 
       proxima.setHours(0, 0, 0, 0);
+      const areaKey = priorityInfo.context && priorityInfo.context.area
+        ? priorityInfo.context.area
+        : parseAlvoParts(item.alvo).area || 'Sem área';
       if (proxima <= hoje) {
         reviewList.push({
           alvo: item.alvo,
@@ -1309,23 +1353,72 @@ function apiMakeReviewToday() {
           components: priorityInfo.components || {},
           context: priorityInfo.context || null,
           feito: feitoMap[item.alvo] || '',
-          modelRow: extras.modelRow || null
+          modelRow: extras.modelRow || null,
+          areaKey
         });
       }
     });
 
     if (useAdvanced && asBoolean(settings.useDiversityReg)) {
-      reviewList.sort((a, b) => (b.prioridade || 0) - (a.prioridade || 0));
-      const diversityCount = {};
-      reviewList.forEach(item => {
-        const areaKey = item.context && item.context.area ? item.context.area : 'Sem área';
-        const penalty = (settings.shrinkageC || 0) * (diversityCount[areaKey] || 0);
-        item.components = item.components || {};
-        item.components.diversity = penalty;
-        item.prioridade = (item.prioridadeBase || 0) - penalty;
-        diversityCount[areaKey] = (diversityCount[areaKey] || 0) + 1;
-        priorityByAlvo[item.alvo] = item.prioridade;
-      });
+      const lambdaDiv = parseFloat(settings.lambdaDiversity);
+      const diversityWeight = isFinite(lambdaDiv) ? lambdaDiv : DEFAULT_SETTINGS.lambdaDiversity;
+      if (diversityWeight !== 0 && reviewList.length > 0) {
+        const areaCounts = {};
+        reviewList.forEach(item => {
+          const key = item.areaKey || 'Sem área';
+          areaCounts[key] = (areaCounts[key] || 0) + 1;
+        });
+        const totalItems = reviewList.length;
+        const coverageReal = {};
+        Object.keys(areaCounts).forEach(area => {
+          coverageReal[area] = areaCounts[area] / totalItems;
+        });
+
+        const targetsRaw = {};
+        let totalPeso = 0;
+        examConfig.forEach(row => {
+          if (!row || !row.area) return;
+          const peso = parseFloat(row.peso);
+          if (!isNaN(peso) && peso > 0) {
+            targetsRaw[row.area] = (targetsRaw[row.area] || 0) + peso;
+            totalPeso += peso;
+          }
+        });
+
+        const uniqueAreas = Array.from(new Set(reviewList.map(item => item.areaKey || 'Sem área')));
+        const targetShares = {};
+        if (totalPeso > 0) {
+          Object.keys(targetsRaw).forEach(area => {
+            targetShares[area] = targetsRaw[area] / totalPeso;
+          });
+          const configuredSum = Object.keys(targetShares).reduce((sum, area) => sum + targetShares[area], 0);
+          const remainingAreas = uniqueAreas.filter(area => !targetShares.hasOwnProperty(area));
+          const remainingShare = Math.max(0, 1 - configuredSum);
+          const defaultShare = remainingAreas.length > 0 ? remainingShare / remainingAreas.length : 0;
+          remainingAreas.forEach(area => {
+            targetShares[area] = defaultShare;
+          });
+        } else if (uniqueAreas.length > 0) {
+          const equalShare = 1 / uniqueAreas.length;
+          uniqueAreas.forEach(area => {
+            targetShares[area] = equalShare;
+          });
+        }
+
+        reviewList.forEach(item => {
+          const area = item.areaKey || 'Sem área';
+          const target = targetShares.hasOwnProperty(area)
+            ? targetShares[area]
+            : (uniqueAreas.length > 0 ? 1 / uniqueAreas.length : 0);
+          const atual = coverageReal[area] || 0;
+          const deficit = Math.max(0, target - atual);
+          const boost = diversityWeight * deficit;
+          item.components = item.components || {};
+          item.components.diversity = boost;
+          item.prioridade = (item.prioridadeBase || 0) + boost;
+          priorityByAlvo[item.alvo] = item.prioridade;
+        });
+      }
     }
 
     reviewList.sort((a, b) => (b.prioridade || 0) - (a.prioridade || 0));
