@@ -646,6 +646,190 @@ function buildExamStudyPlan(exam, options, settings) {
   const areaSummary = {};
   let totalDelta = 0;
 
+  const scheduleSessionsForTopic = (topic, baseMinutes, gainResult, context) => {
+    const contextDate = context && context.currentDate instanceof Date ? context.currentDate : today;
+    const dayIndexValue = context && isFinite(context.dayIndex) ? Number(context.dayIndex) : 0;
+    let sequenceCounter = context && isFinite(context.sequence) ? Number(context.sequence) : 1;
+    const planGuide = gainResult && gainResult.plan ? gainResult.plan : null;
+    const todayPlan = planGuide && planGuide.planToday ? planGuide.planToday : null;
+    const statusGuide = planGuide && planGuide.status ? planGuide.status : null;
+    const stageGuide = planGuide && planGuide.stage ? planGuide.stage : null;
+    const tasks = [];
+
+    if (todayPlan) {
+      if (statusGuide === 'NOVO') {
+        if (todayPlan.readMin > 0) {
+          tasks.push({
+            technique: 'LEITURA',
+            rawMinutes: todayPlan.readMin,
+            mode: 'power',
+            notes: 'Leitura ativa do conteúdo',
+            scheduleReviews: false
+          });
+        }
+        if (todayPlan.flashcardsCreateMin > 0) {
+          const cards = Math.round(todayPlan.flashcardsCreate || 0);
+          tasks.push({
+            technique: 'FLASHCARDS',
+            rawMinutes: todayPlan.flashcardsCreateMin,
+            mode: 'power',
+            notes: cards > 0 ? `Criar ${cards} cards conceituais` : 'Criar cards conceituais',
+            scheduleReviews: false
+          });
+        }
+        if (todayPlan.questionsEstMin > 0) {
+          const qCount = Math.round(todayPlan.questionsNew || 0);
+          tasks.push({
+            technique: 'QUESTOES',
+            rawMinutes: todayPlan.questionsEstMin,
+            mode: 'power',
+            notes: qCount > 0 ? `Bloco de ${qCount} questões iniciais` : 'Questões iniciais',
+            scheduleReviews: true
+          });
+        }
+      } else {
+        if (todayPlan.flashcardsReviewMin > 0) {
+          tasks.push({
+            technique: 'FLASHCARDS',
+            rawMinutes: todayPlan.flashcardsReviewMin,
+            mode: 'maintenance',
+            notes: 'Revisar flashcards existentes',
+            scheduleReviews: false
+          });
+        }
+        if (todayPlan.flashcardsCreateMin > 0) {
+          const cards = Math.round(todayPlan.flashcardsCreate || 0);
+          tasks.push({
+            technique: 'FLASHCARDS',
+            rawMinutes: todayPlan.flashcardsCreateMin,
+            mode: 'maintenance',
+            notes: cards > 0 ? `Criar ${cards} cards de erro` : 'Criar cards de erro',
+            scheduleReviews: false
+          });
+        }
+        if (todayPlan.questionsEstMin > 0) {
+          const qCount = Math.round(todayPlan.questionsNew || 0);
+          const helper = stageGuide === 'S1'
+            ? 'Questões pós-D1'
+            : (stageGuide === 'S3' ? 'Questões de manutenção' : 'Questões de consolidação');
+          tasks.push({
+            technique: 'QUESTOES',
+            rawMinutes: todayPlan.questionsEstMin,
+            mode: stageGuide === 'S3' ? 'maintenance' : 'power',
+            notes: qCount > 0 ? `${helper} (${qCount})` : helper,
+            scheduleReviews: true
+          });
+        }
+      }
+    }
+
+    if (tasks.length === 0) {
+      tasks.push({
+        technique: 'QUESTOES',
+        rawMinutes: baseMinutes,
+        mode: 'power',
+        notes: 'Prática orientada',
+        scheduleReviews: true
+      });
+    }
+
+    let totalRawMinutes = tasks.reduce((sum, task) => sum + (Number(task.rawMinutes) || 0), 0);
+    if (!isFinite(totalRawMinutes) || totalRawMinutes <= 0) {
+      totalRawMinutes = tasks.length > 0 ? tasks.length * 10 : 0;
+      tasks.forEach(task => { task.rawMinutes = totalRawMinutes > 0 ? totalRawMinutes / tasks.length : 0; });
+    }
+
+    let effectiveTotalMinutes = isFinite(baseMinutes) && baseMinutes > 0 ? baseMinutes : totalRawMinutes;
+    if (!isFinite(effectiveTotalMinutes) || effectiveTotalMinutes <= 0) {
+      effectiveTotalMinutes = totalRawMinutes > 0 ? totalRawMinutes : (tasks.length > 0 ? tasks.length * 10 : 25);
+    }
+    const minTotal = tasks.length > 0 ? tasks.length * 5 : 0;
+    if (effectiveTotalMinutes < minTotal) {
+      effectiveTotalMinutes = minTotal;
+    }
+
+    const deltaTotal = Math.max(0, Number(gainResult && gainResult.deltaRpp ? gainResult.deltaRpp : 0));
+    let accumulatedDelta = 0;
+    let allocatedMinutes = 0;
+
+    tasks.forEach((task, idx) => {
+      const raw = Number(task.rawMinutes) || 0;
+      const share = totalRawMinutes > 0 ? raw / totalRawMinutes : (1 / tasks.length);
+      let minutes = Math.max(5, Math.round(share * effectiveTotalMinutes));
+      if (idx === tasks.length - 1) {
+        const remaining = effectiveTotalMinutes - allocatedMinutes;
+        if (isFinite(remaining) && remaining > 0) {
+          minutes = Math.max(5, Math.round(remaining));
+        }
+      }
+      allocatedMinutes += minutes;
+
+      let taskDelta = deltaTotal * share;
+      if (idx === tasks.length - 1) {
+        taskDelta = Math.max(0, deltaTotal - accumulatedDelta);
+      }
+      const roundedDelta = Math.max(0, Math.round(taskDelta * 10) / 10);
+      accumulatedDelta += roundedDelta;
+
+      const sessionId = generateRowId('sess');
+      const parts = parseAlvoParts(topic.alvo || '');
+      const areaLabel = parts.area || 'Geral';
+      if (!areaSummary[areaLabel]) {
+        areaSummary[areaLabel] = { allocMin: 0, deltaRpp: 0 };
+      }
+      areaSummary[areaLabel].allocMin += minutes;
+      areaSummary[areaLabel].deltaRpp += roundedDelta;
+      totalDelta += roundedDelta;
+
+      sessions.push({
+        id: sessionId,
+        examId: exam.id,
+        day: formatDateDDMMYYYY(contextDate),
+        sequence: dayIndexValue * 100 + sequenceCounter,
+        start: '',
+        end: '',
+        minutes,
+        technique: task.technique,
+        mode: task.mode || 'power',
+        topic: topic.alvo,
+        confusableWith: Array.isArray(topic.confusables) ? topic.confusables.join(', ') : '',
+        pomodoroType: '25-5',
+        status: 'pending',
+        accuracy: '',
+        difficulty: '',
+        notes: task.notes || '',
+        createdAt: formatDateTimeISO(new Date()),
+        updatedAt: formatDateTimeISO(new Date()),
+        deltaRpp: roundedDelta
+      });
+      sequenceCounter += 1;
+
+      if (task.scheduleReviews && Array.isArray(regime.revisionOffsets)) {
+        regime.revisionOffsets.forEach(offset => {
+          const gap = Math.max(0, offset);
+          const reviewDate = new Date(contextDate.getTime() + gap * msPerDay);
+          if (reviewDate > examDate) return;
+          const reviewMinutes = gap <= 3 ? 15 : 20;
+          reviews.push({
+            id: generateRowId('rev'),
+            examId: exam.id,
+            sourceSessionId: sessionId,
+            day: formatDateDDMMYYYY(reviewDate),
+            minutes: reviewMinutes,
+            gap,
+            type: gap <= 1 ? 'curta' : 'revisao',
+            status: 'pending',
+            notes: '',
+            createdAt: formatDateTimeISO(new Date()),
+            updatedAt: formatDateTimeISO(new Date())
+          });
+        });
+      }
+    });
+
+    return sequenceCounter;
+  };
+
   for (let dayIndex = 0; dayIndex <= daysUntil; dayIndex++) {
     const currentDate = new Date(today.getTime() + dayIndex * msPerDay);
     const dateLabel = formatDateDDMMYYYY(currentDate);
@@ -697,124 +881,41 @@ function buildExamStudyPlan(exam, options, settings) {
     const recallAllocation = allocateTopicSlots(topics, recallSlots);
     const reviewAllocation = allocateTopicSlots(topics, reviewSlots);
 
+    const topicMinutesMap = new Map();
+    const topicOrder = [];
+
+    const addMinutesForTopic = (topic, minutes) => {
+      if (!topic || !topic.alvo) return;
+      if (!isFinite(minutes) || minutes <= 0) return;
+      const key = topic.alvo;
+      if (!topicMinutesMap.has(key)) {
+        topicMinutesMap.set(key, { topic, minutes: 0 });
+        topicOrder.push(key);
+      }
+      const entry = topicMinutesMap.get(key);
+      entry.minutes += minutes;
+    };
+
     recallAllocation.forEach(slotIndex => {
       const topic = topics[slotIndex] || topics[0];
-      if (!topic) return;
-      const minutes = recallBlock;
-      const gain = estimateSessionGain(topic.alvo, minutes, settings, dataCache, logRows, revisaoRows, examConfig, today, gainCache);
-      const delta = Math.round((gain.deltaRpp || 0) * 10) / 10;
-      const sessionId = generateRowId('sess');
-      sessions.push({
-        id: sessionId,
-        examId: exam.id,
-        day: dateLabel,
-        sequence: dayIndex * 100 + sequence,
-        start: '',
-        end: '',
-        minutes,
-        technique: (gain.plan && gain.plan.status === 'NOVO') ? 'QUESTOES' : 'QUESTOES',
-        mode: 'power',
-        topic: topic.alvo,
-        confusableWith: Array.isArray(topic.confusables) ? topic.confusables.join(', ') : '',
-        pomodoroType: '25-5',
-        status: 'pending',
-        accuracy: '',
-        difficulty: '',
-        notes: '',
-        createdAt: formatDateTimeISO(new Date()),
-        updatedAt: formatDateTimeISO(new Date()),
-        deltaRpp: delta
-      });
-      totalDelta += delta;
-      const parts = parseAlvoParts(topic.alvo);
-      const key = parts.area || 'Geral';
-      if (!areaSummary[key]) {
-        areaSummary[key] = { allocMin: 0, deltaRpp: 0 };
-      }
-      areaSummary[key].allocMin += minutes;
-      areaSummary[key].deltaRpp += delta;
-      sequence += 1;
-
-      (regime.revisionOffsets || []).forEach(offset => {
-        const gap = Math.max(0, offset);
-        const reviewDate = new Date(currentDate.getTime() + gap * msPerDay);
-        if (reviewDate > examDate) return;
-        const reviewId = generateRowId('rev');
-        const reviewMinutes = gap <= 3 ? 15 : 20;
-        reviews.push({
-          id: reviewId,
-          examId: exam.id,
-          sourceSessionId: sessionId,
-          day: formatDateDDMMYYYY(reviewDate),
-          minutes: reviewMinutes,
-          gap,
-          type: gap <= 1 ? 'curta' : 'revisao',
-          status: 'pending',
-          notes: '',
-          createdAt: formatDateTimeISO(new Date()),
-          updatedAt: formatDateTimeISO(new Date())
-        });
-      });
+      addMinutesForTopic(topic, recallBlock);
     });
 
     reviewAllocation.forEach(slotIndex => {
       const topic = topics[slotIndex] || topics[0];
-      if (!topic) return;
-      const minutes = reviewBlock;
-      const gain = estimateSessionGain(topic.alvo, minutes, settings, dataCache, logRows, revisaoRows, examConfig, today, gainCache);
-      const delta = Math.round((gain.deltaRpp || 0) * 10) / 10;
-      const sessionId = generateRowId('sess');
-      sessions.push({
-        id: sessionId,
-        examId: exam.id,
-        day: dateLabel,
-        sequence: dayIndex * 100 + sequence,
-        start: '',
-        end: '',
-        minutes,
-        technique: 'ERRADAS',
-        mode: 'maintenance',
-        topic: topic.alvo,
-        confusableWith: Array.isArray(topic.confusables) ? topic.confusables.join(', ') : '',
-        pomodoroType: '25-5',
-        status: 'pending',
-        accuracy: '',
-        difficulty: '',
-        notes: '',
-        createdAt: formatDateTimeISO(new Date()),
-        updatedAt: formatDateTimeISO(new Date()),
-        deltaRpp: delta
-      });
-      totalDelta += delta;
-      const parts = parseAlvoParts(topic.alvo);
-      const key = parts.area || 'Geral';
-      if (!areaSummary[key]) {
-        areaSummary[key] = { allocMin: 0, deltaRpp: 0 };
-      }
-      areaSummary[key].allocMin += minutes;
-      areaSummary[key].deltaRpp += delta;
-      sequence += 1;
+      addMinutesForTopic(topic, reviewBlock);
+    });
 
-      (regime.revisionOffsets || []).forEach(offset => {
-        if (offset === 0) return;
-        const gap = Math.max(0, offset);
-        const reviewDate = new Date(currentDate.getTime() + gap * msPerDay);
-        if (reviewDate > examDate) return;
-        const reviewId = generateRowId('rev');
-        const reviewMinutes = gap <= 3 ? 15 : 20;
-        reviews.push({
-          id: reviewId,
-          examId: exam.id,
-          sourceSessionId: sessionId,
-          day: formatDateDDMMYYYY(reviewDate),
-          minutes: reviewMinutes,
-          gap,
-          type: gap <= 1 ? 'curta' : 'revisao',
-          status: 'pending',
-          notes: '',
-          createdAt: formatDateTimeISO(new Date()),
-          updatedAt: formatDateTimeISO(new Date())
-        });
+    topicOrder.forEach(alvoKey => {
+      const entry = topicMinutesMap.get(alvoKey);
+      if (!entry || !entry.topic) return;
+      const minutes = Number(entry.minutes) || 0;
+      if (minutes <= 0) return;
+      const gain = estimateSessionGain(entry.topic.alvo, minutes, settings, dataCache, logRows, revisaoRows, examConfig, today, gainCache);
+      sequence = scheduleSessionsForTopic(entry.topic, minutes, gain, {
+        currentDate,
+        dayIndex,
+        sequence
       });
     });
   }
@@ -895,6 +996,62 @@ function apiCreateExam(payload) {
 
     persistExamRecord(record);
     return { ok: true, exam: serializeExamRecord(record) };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiUpdateExam(payload) {
+  try {
+    ensureStudyPlanningSheets();
+    const data = payload || {};
+    const examId = (data.examId || data.id || '').toString().trim();
+    if (!examId) {
+      return { ok: false, error: 'examId obrigatório' };
+    }
+
+    const exams = loadExamRecords();
+    const exam = exams.find(item => item && item.id === examId);
+    if (!exam) {
+      return { ok: false, error: 'Prova não encontrada' };
+    }
+
+    if (data.title !== undefined) {
+      const title = (data.title || '').toString().trim();
+      if (title) {
+        exam.title = title;
+      }
+    }
+
+    if (data.dateTime || data.date || data.dateISO) {
+      const parsed = parseExamDateTime(data.dateTime || data.date || data.dateISO);
+      if (parsed) {
+        exam.dateTime = parsed;
+      }
+    }
+
+    if (data.hoursPerDay !== undefined) {
+      const hours = Number(data.hoursPerDay);
+      if (isFinite(hours) && hours > 0) {
+        exam.hoursPerDay = hours;
+      }
+    }
+
+    if (data.importance !== undefined) {
+      const importance = Number(data.importance);
+      if (isFinite(importance) && importance > 0) {
+        exam.importance = importance;
+      }
+    }
+
+    if (Array.isArray(data.topics)) {
+      exam.topics = normalizeExamTopicsList(data.topics, exam.title);
+    }
+
+    exam.updatedAt = new Date();
+    persistExamRecord(exam);
+
+    return { ok: true, exam: serializeExamRecord(exam) };
   } catch (e) {
     return { ok: false, error: e.toString() };
   }
@@ -3527,6 +3684,11 @@ function apiPlanDayBudget(params) {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
+    const dataCache = buildStudyGuideData(planningSettings);
+    const logRows = readSheetData(SHEET_NAMES.LOG);
+    const revisaoRows = readSheetData(SHEET_NAMES.REVISAO_LOG);
+    const examConfig = readSheetData(SHEET_NAMES.EXAM_CONFIG);
+
     const gather = gatherReviewCandidates(planningSettings, hoje);
     const reviewList = gather.reviewList || [];
     const reviewMap = {};
@@ -3656,6 +3818,59 @@ function apiPlanDayBudget(params) {
       deltaRpp: Math.round(areaAgg[key].deltaRpp * 10) / 10
     })).sort((a, b) => (b.allocMin || 0) - (a.allocMin || 0));
 
+    const prefsForGuide = {
+      flashcardsPerMinBase: planningSettings.flashcardsPerMinBase !== undefined
+        ? planningSettings.flashcardsPerMinBase
+        : DEFAULT_SETTINGS.flashcardsPerMinBase,
+      blockQuestionsTarget: 25,
+      readShare: 0.35
+    };
+    const todayDate = new Date(hoje.getTime());
+
+    let newCount = 0;
+    let historicalCount = 0;
+    let guideMinutesSum = 0;
+    let guideDeltaSum = 0;
+
+    const enrichedTargets = plan.targets.map(target => {
+      const enriched = Object.assign({}, target);
+      const allocMinutes = Math.max(Math.round(target.allocMin || 0), 15);
+      const guidePlan = computeStudyGuidePlanV2(target.alvo, allocMinutes, prefsForGuide, planningSettings, dataCache, logRows, revisaoRows, examConfig, todayDate);
+      if (guidePlan) {
+        if (guidePlan.status) {
+          enriched.guideStatus = guidePlan.status;
+          if (guidePlan.status === 'NOVO') newCount += 1;
+          else if (guidePlan.status === 'HISTORICO') historicalCount += 1;
+        }
+        if (guidePlan.stage) {
+          enriched.guideStage = guidePlan.stage;
+        }
+        if (guidePlan.planToday) {
+          const todayPlan = guidePlan.planToday;
+          if (todayPlan.totalMin !== undefined && todayPlan.totalMin !== null) {
+            enriched.guideTotalMin = Number(todayPlan.totalMin);
+            if (isFinite(enriched.guideTotalMin)) {
+              guideMinutesSum += enriched.guideTotalMin;
+            }
+          }
+          if (todayPlan.deltaRpp !== undefined && todayPlan.deltaRpp !== null) {
+            enriched.guideDelta = Number(todayPlan.deltaRpp);
+            if (isFinite(enriched.guideDelta)) {
+              guideDeltaSum += enriched.guideDelta;
+            }
+          }
+        }
+      }
+      return enriched;
+    });
+
+    const guideSummary = {
+      countNew: newCount,
+      countHistorical: historicalCount,
+      totalMinutes: Math.round(guideMinutesSum),
+      totalDeltaRpp: Math.round(guideDeltaSum * 10) / 10
+    };
+
     return {
       ok: true,
       mode: useAdvanced ? (plan.fallback ? 'classic' : 'advanced') : 'classic',
@@ -3663,8 +3878,9 @@ function apiPlanDayBudget(params) {
       budgetMin: budgetMin,
       allocatedMin: Math.round(plan.totalAlloc),
       totalDeltaRpp: plan.totalDelta,
-      targets: plan.targets,
-      areas
+      targets: enrichedTargets,
+      areas,
+      guideSummary
     };
   } catch (e) {
     return { ok: false, error: e.toString() };
@@ -3753,6 +3969,7 @@ function apiCompareModes(params) {
     const maintenanceDiag = computeModeDiagnostics(maintenancePlan.targets || []);
 
     const sanitizeModeOutput = function(plan, diag) {
+      const guide = plan.guideSummary || {};
       return {
         totalDeltaRpp: Number(plan.totalDeltaRpp) || 0,
         areas: Array.isArray(plan.areas) ? plan.areas : [],
@@ -3763,7 +3980,13 @@ function apiCompareModes(params) {
         targetCount: diag.count,
         allocatedMin: Number(plan.allocatedMin) || 0,
         fallbackToPriority: !!plan.fallbackToPriority,
-        modeUsed: plan.mode || ''
+        modeUsed: plan.mode || '',
+        guideSummary: {
+          countNew: Number(guide.countNew) || 0,
+          countHistorical: Number(guide.countHistorical) || 0,
+          totalMinutes: Number(guide.totalMinutes) || 0,
+          totalDeltaRpp: Number(guide.totalDeltaRpp) || 0
+        }
       };
     };
 
@@ -4300,7 +4523,7 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
   const status = hasHistoryFlag ? 'HISTORICO' : 'NOVO';
   let stage = status === 'NOVO' ? 'D1' : 'S2';
   if (status === 'HISTORICO') {
-    stage = determineGuideStage(nEff, daysSinceLast, recallToday, lapses);
+    stage = determineGuideStage(nEff, daysSinceLast, recallToday, lapses, acerto28, estabilidade);
   }
 
   const totalMinutes = budgetMinutes;
@@ -4364,10 +4587,12 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
     }
 
     const deltaRpp = Math.max(0, 100 * kappaPriToDelta * (1 - recallToday));
+    const flashcardsCreateMin = Math.round(Math.max(0, flashMin));
     planToday = {
       readMin: Math.round(readMin),
       flashcardsCreate,
       flashcardsReviewMin: 0,
+      flashcardsCreateMin,
       questionsNew,
       questionsEstMin: Math.round(Math.max(questionsEstMin, blockMin)),
       deltaRpp,
@@ -4445,10 +4670,12 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
     const effectiveMinutes = Math.max(1, totalMinutes);
     const deltaRpp = Math.max(0, Math.round(deltaPerMin * effectiveMinutes * 1000) / 10);
 
+    const creationEstMin = Math.round(creationMin);
     planToday = {
       readMin: 0,
       flashcardsCreate,
       flashcardsReviewMin: Math.round(reviewMin),
+      flashcardsCreateMin: creationEstMin,
       questionsNew: Math.max(0, Math.round(questionsNew)),
       questionsEstMin: Math.round(Math.max(questionsEstMin, questionsMin)),
       deltaRpp,
@@ -4464,6 +4691,19 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
       }
     };
     rationaleExtra = planToday.rationale;
+  }
+
+  if (planToday) {
+    const readComponent = planToday.readMin || 0;
+    const reviewComponent = planToday.flashcardsReviewMin || 0;
+    const createComponent = planToday.flashcardsCreateMin || 0;
+    const questionsComponent = planToday.questionsEstMin || 0;
+    const sumMinutes = Math.round(readComponent + reviewComponent + createComponent + questionsComponent);
+    if (!isFinite(planToday.totalMin) || planToday.totalMin <= 0) {
+      planToday.totalMin = sumMinutes;
+    } else if (sumMinutes > planToday.totalMin) {
+      planToday.totalMin = sumMinutes;
+    }
   }
 
   const perMinuteGainPP = planToday && planToday.totalMin > 0 ? (planToday.deltaRpp || 0) / Math.max(1, planToday.totalMin) : 0;
@@ -4516,15 +4756,20 @@ function resolveModelRow(modelMap, alvoKey) {
   return matchKey ? modelMap[matchKey] : null;
 }
 
-function determineGuideStage(nEff, daysSinceLast, recallToday, lapses) {
+function determineGuideStage(nEff, daysSinceLast, recallToday, lapses, acerto28, estabilidade) {
   const eff = isFinite(nEff) ? nEff : 0;
   const days = isFinite(daysSinceLast) ? daysSinceLast : null;
   const recall = isFinite(recallToday) ? recallToday : 0.5;
   const laps = isFinite(lapses) ? lapses : 0;
+  const acerto = isFinite(acerto28) ? acerto28 : null;
+  const est = isFinite(estabilidade) ? estabilidade : null;
   if (eff < 10 || (days !== null && days <= 7)) {
     return 'S1';
   }
-  if (eff > 30 && recall >= 0.75 && laps <= 3) {
+  const highRecall = recall >= 0.75;
+  const highAcerto = acerto !== null && acerto >= 0.85;
+  const highEst = est !== null && est >= 40;
+  if ((eff > 30 || (highRecall && highAcerto) || highEst) && laps <= 3) {
     return 'S3';
   }
   return 'S2';

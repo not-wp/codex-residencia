@@ -1602,6 +1602,12 @@
       font-weight: 500;
     }
 
+    .planner-summary-line {
+      margin-top: 6px;
+      font-size: 0.92rem;
+      color: var(--text-secondary);
+    }
+
     .planner-chips {
       display: flex;
       flex-wrap: wrap;
@@ -2386,6 +2392,7 @@
                   <div id="plannerTotalBadge" class="planner-total">Total: —</div>
                 </div>
                 <div id="plannerChips" class="planner-chips"></div>
+                <div id="plannerDaySummary" class="planner-summary-line">Hoje: —</div>
                 <div class="planner-mode">
                   <span style="font-size:0.9rem; color:var(--text-secondary);">Modo de sessão:</span>
                   <div class="mode-toggle">
@@ -3196,7 +3203,7 @@
   <div id="examModal" class="modal" aria-hidden="true">
     <div class="modal-content">
       <header class="modal-header">
-        <h3>Nova prova</h3>
+        <h3 id="examModalTitle">Nova prova</h3>
         <button class="btn-icon" onclick="fecharNovaProva()" aria-label="Fechar">✕</button>
       </header>
       <form id="examForm" onsubmit="return false;">
@@ -3219,7 +3226,7 @@
         </label>
         <div class="modal-actions">
           <button type="button" class="btn btn-secondary" onclick="fecharNovaProva()">Cancelar</button>
-          <button type="button" class="btn btn-primary" onclick="salvarNovaProva()">Salvar prova</button>
+          <button type="button" id="examModalSaveBtn" class="btn btn-primary" onclick="salvarProva()">Salvar</button>
         </div>
       </form>
     </div>
@@ -3252,12 +3259,13 @@
     let calendarCache = [];
     let plannerAllocations = new Map();
     let plannerAreas = [];
-    let plannerSummary = { budget: 0, allocated: 0, delta: 0, mode: 'classic' };
+    let plannerSummary = { budget: 0, allocated: 0, delta: 0, mode: 'classic', countNew: 0, countHistorical: 0, guideMinutes: 0, guideDelta: 0 };
     let plannerModeSelection = (localStorage.getItem('plannerMode') || 'power');
     let flowSelectedAlvo = '';
     let weeklyPlanData = null;
     let retrospectiveSnapshot = null;
     let modeComparisonResult = null;
+    let examEditingId = null;
 
     const alvoSuggestionSet = new Set();
     const areaSuggestionSet = new Set();
@@ -3581,7 +3589,7 @@
         });
         steps.push({
           title: 'D1 · Criar flashcards conceituais',
-          value: `${Math.round(planToday.flashcardsCreate || 0)} cards`,
+          value: `${Math.round(planToday.flashcardsCreate || 0)} cards (${Math.round(planToday.flashcardsCreateMin || 0)} min)`,
           helper: 'Transforme os conceitos em perguntas/respostas curtas.',
           tooltip: 'Sugestão ajustada por dificuldade média e acerto recente.'
         });
@@ -3612,7 +3620,7 @@
         });
         steps.push({
           title: 'Hoje · Criar cards de erro',
-          value: `${Math.round(planToday.flashcardsCreate || 0)} cards`,
+          value: `${Math.round(planToday.flashcardsCreate || 0)} cards (${Math.round(planToday.flashcardsCreateMin || 0)} min)`,
           helper: 'Transforme erros recentes em lembretes rápidos.',
           tooltip: 'Estimado a partir do acerto dos últimos 28 dias.'
         });
@@ -3807,7 +3815,9 @@
       if (highlightAlvo && plannerAllocations.has(highlightAlvo)) {
         helperEl.textContent = `Tempo total planejado: ${totalAlloc.toFixed(0)} min · ${highlightAlvo} destacado.`;
       } else {
-        helperEl.textContent = `Tempo total planejado: ${totalAlloc.toFixed(0)} min.`;
+        const novos = Number(plannerSummary.countNew) || 0;
+        const historicos = Number(plannerSummary.countHistorical) || 0;
+        helperEl.textContent = `Tempo total planejado: ${totalAlloc.toFixed(0)} min · ${novos} novo(s) · ${historicos} histórico(s).`;
       }
     }
 
@@ -3876,7 +3886,9 @@
           const delta = Number(info.deltaRpp) || 0;
           helperEl.textContent = `${highlight}: ${alloc.toFixed(0)} min (+${delta.toFixed(1)}%) selecionado.`;
         } else {
-          helperEl.textContent = `Tempo total planejado: ${totalAlloc.toFixed(0)} min → +${totalDelta.toFixed(1)}%.`;
+          const novos = Number(plannerSummary.countNew) || 0;
+          const historicos = Number(plannerSummary.countHistorical) || 0;
+          helperEl.textContent = `Tempo total planejado: ${totalAlloc.toFixed(0)} min → +${totalDelta.toFixed(1)}%. (${novos} novo(s) · ${historicos} histórico(s))`;
         }
       }
 
@@ -3988,7 +4000,7 @@
           todayItems.push({ key: 'read', label: `Leitura ativa (${Math.round(planToday.readMin)} min)`, tooltip: 'Leitura ativa com perguntas geradas durante o estudo.' });
         }
         if (planToday.flashcardsCreate > 0) {
-          todayItems.push({ key: 'cards', label: `Criou ${Math.round(planToday.flashcardsCreate)} cards conceituais`, tooltip: 'Cards conceituais resumem os pontos-chave em perguntas objetivas.' });
+          todayItems.push({ key: 'cards', label: `Criou ${Math.round(planToday.flashcardsCreate)} cards conceituais (${Math.round(planToday.flashcardsCreateMin || 0)} min)`, tooltip: 'Cards conceituais resumem os pontos-chave em perguntas objetivas.' });
         }
         if (planToday.questionsNew > 0) {
           todayItems.push({ key: 'questions', label: `Resolveu ${Math.round(planToday.questionsNew)} questões`, tooltip: 'Bloco inicial para colocar o conteúdo em prática.' });
@@ -4001,7 +4013,7 @@
           todayItems.push({ key: 'review', label: `Revisou flashcards (${Math.round(planToday.flashcardsReviewMin)} min)`, tooltip: 'Reative seus cards antes de seguir para novas questões.' });
         }
         if (planToday.flashcardsCreate > 0) {
-          todayItems.push({ key: 'errorcards', label: `Criou ${Math.round(planToday.flashcardsCreate)} cards de erro`, tooltip: 'Cards de erro capturam gatilhos dos últimos equívocos.' });
+          todayItems.push({ key: 'errorcards', label: `Criou ${Math.round(planToday.flashcardsCreate)} cards de erro (${Math.round(planToday.flashcardsCreateMin || 0)} min)`, tooltip: 'Cards de erro capturam gatilhos dos últimos equívocos.' });
         }
         if (planToday.questionsNew > 0) {
           todayItems.push({ key: 'questions', label: `Resolveu ${Math.round(planToday.questionsNew)} questões`, tooltip: 'Questões novas calibradas pela etapa atual.' });
@@ -4235,6 +4247,10 @@
       const areaMap = new Map();
       let totalAlloc = 0;
       let totalDelta = 0;
+      let countNew = 0;
+      let countHistorical = 0;
+      let guideMinutes = 0;
+      let guideDelta = 0;
 
       if (sourceMap instanceof Map) {
         sourceMap.forEach(target => {
@@ -4251,6 +4267,17 @@
             const bucket = areaMap.get(areaKey);
             bucket.allocMin += alloc;
             bucket.deltaRpp += delta;
+            if (target.guideStatus === 'NOVO') {
+              countNew += 1;
+            } else if (target.guideStatus === 'HISTORICO') {
+              countHistorical += 1;
+            }
+            if (isFinite(Number(target.guideTotalMin))) {
+              guideMinutes += Number(target.guideTotalMin);
+            }
+            if (isFinite(Number(target.guideDelta))) {
+              guideDelta += Number(target.guideDelta);
+            }
           }
         });
       }
@@ -4259,7 +4286,11 @@
       return {
         totalAlloc,
         totalDelta,
-        areas
+        areas,
+        countNew,
+        countHistorical,
+        guideMinutes,
+        guideDelta
       };
     }
 
@@ -4328,6 +4359,17 @@
         fallbackChip.className = 'metric-chip warning';
         fallbackChip.textContent = 'Pri/min (sem EVI)';
         container.appendChild(fallbackChip);
+      }
+
+      if (modeData && modeData.guideSummary) {
+        const summary = modeData.guideSummary;
+        const mixChip = document.createElement('span');
+        mixChip.className = 'metric-chip';
+        const novos = Number(summary.countNew) || 0;
+        const hist = Number(summary.countHistorical) || 0;
+        const minutos = Number(summary.totalMinutes) || 0;
+        mixChip.textContent = `${novos} novo(s) · ${hist} histórico(s) · ${Math.round(minutos)} min`;
+        container.appendChild(mixChip);
       }
     }
 
@@ -4422,7 +4464,15 @@
             gainText += ' (Pri/min)';
           }
         }
-        summaryEl.textContent = `Modo atual: ${modeLabel} — orçamento ${budgetText} → ${gainText} previstos`;
+        let summaryText = `Modo atual: ${modeLabel} — orçamento ${budgetText} → ${gainText} previstos`;
+        if (modeData && modeData.guideSummary) {
+          const gs = modeData.guideSummary;
+          const novos = Number(gs.countNew) || 0;
+          const hist = Number(gs.countHistorical) || 0;
+          const minutos = Number(gs.totalMinutes) || 0;
+          summaryText += ` · ${novos} novo(s) / ${hist} histórico(s) · ${Math.round(minutos)} min`;
+        }
+        summaryEl.textContent = summaryText;
       }
     }
 
@@ -4507,7 +4557,7 @@
       plannerAllocations = new Map();
       plannerAreas = [];
       const mode = toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic';
-      plannerSummary = { budget: 0, allocated: 0, delta: 0, mode };
+      plannerSummary = { budget: 0, allocated: 0, delta: 0, mode, countNew: 0, countHistorical: 0, guideMinutes: 0, guideDelta: 0 };
       modeComparisonResult = null;
       flowSelectedAlvo = '';
       if (clearSummary) {
@@ -4568,6 +4618,19 @@
             chip.textContent = `${area.area || '—'}: ${allocVal.toFixed(0)} min (+${deltaVal.toFixed(1)}%)`;
             chipsEl.appendChild(chip);
           });
+        }
+      }
+      const summaryEl = document.getElementById('plannerDaySummary');
+      if (summaryEl) {
+        if (plannerSummary.allocated > 0) {
+          const novos = Number(plannerSummary.countNew) || 0;
+          const historicos = Number(plannerSummary.countHistorical) || 0;
+          const minutos = Number(plannerSummary.guideMinutes) || plannerSummary.allocated || 0;
+          const ganho = Number(plannerSummary.guideDelta);
+          const ganhoTexto = Number.isFinite(ganho) ? `+${ganho.toFixed(1)} pp` : `+${plannerSummary.delta.toFixed(1)}%`;
+          summaryEl.textContent = `Hoje: iniciar ${novos} novo(s), revisar ${historicos} histórico(s) · ≈ ${Math.round(minutos)} min → ${ganhoTexto}`;
+        } else {
+          summaryEl.textContent = 'Hoje: —';
         }
       }
       applyPlannerModeUI();
@@ -5332,7 +5395,11 @@
                 budget: prevBudget,
                 allocated: totalAlloc,
                 delta: safeDelta,
-                mode: policyMode
+                mode: policyMode,
+                countNew: Number(aggregates.countNew) || 0,
+                countHistorical: Number(aggregates.countHistorical) || 0,
+                guideMinutes: Number(aggregates.guideMinutes) || 0,
+                guideDelta: Number(aggregates.guideDelta) || 0
               };
             } else {
               reviewQueue = normalized;
@@ -5465,11 +5532,24 @@
           const totalAlloc = Number.isFinite(rawAlloc) ? Math.round(rawAlloc) : 0;
           const totalDelta = Number.isFinite(rawDelta) ? Math.round(rawDelta * 10) / 10 : 0;
           const safeDelta = totalDelta < 0 ? 0 : totalDelta;
+          const guideSummary = result.guideSummary || {};
+          const hasGuideMinutes = Number.isFinite(aggregates.guideMinutes);
+          const guideMinutes = hasGuideMinutes
+            ? Math.max(0, Math.round(Number(aggregates.guideMinutes)))
+            : (Number.isFinite(guideSummary.totalMinutes) ? Math.max(0, Math.round(Number(guideSummary.totalMinutes))) : 0);
+          const hasGuideDelta = Number.isFinite(aggregates.guideDelta);
+          const guideDelta = hasGuideDelta
+            ? Math.max(0, Math.round(Number(aggregates.guideDelta) * 10) / 10)
+            : (Number.isFinite(guideSummary.totalDeltaRpp) ? Math.max(0, Number(guideSummary.totalDeltaRpp)) : 0);
           plannerSummary = {
             budget: Number(result.budgetMin) || budget,
             allocated: totalAlloc,
             delta: safeDelta,
-            mode: result.mode || (toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic')
+            mode: result.mode || (toBool((currentSettings || {}).useAdvancedPriority) ? 'advanced' : 'classic'),
+            countNew: Number.isFinite(aggregates.countNew) ? aggregates.countNew : (Number(guideSummary.countNew) || 0),
+            countHistorical: Number.isFinite(aggregates.countHistorical) ? aggregates.countHistorical : (Number(guideSummary.countHistorical) || 0),
+            guideMinutes,
+            guideDelta
           };
 
           updatePlannerSummaryUI();
@@ -5639,6 +5719,52 @@
         document.getElementById('examHoursPerDay').value = '3';
         document.getElementById('examImportance').value = '1';
       }
+      examEditingId = null;
+      const titleEl = document.getElementById('examModalTitle');
+      const saveBtn = document.getElementById('examModalSaveBtn');
+      if (titleEl) titleEl.textContent = 'Nova prova';
+      if (saveBtn) saveBtn.textContent = 'Salvar prova';
+      modal.classList.add('active');
+      setTimeout(() => {
+        const input = document.getElementById('examTitle');
+        if (input) input.focus();
+      }, 50);
+    }
+
+    function abrirEditarProva(examId) {
+      const exam = examsState.list.find(item => item && item.id === examId);
+      if (!exam) {
+        toast('Prova não encontrada para edição.', 'error');
+        return;
+      }
+      const modal = document.getElementById('examModal');
+      if (!modal) return;
+      examEditingId = examId;
+      const form = document.getElementById('examForm');
+      if (form) {
+        form.reset();
+      }
+      const titleEl = document.getElementById('examModalTitle');
+      const saveBtn = document.getElementById('examModalSaveBtn');
+      if (titleEl) titleEl.textContent = 'Editar prova';
+      if (saveBtn) saveBtn.textContent = 'Salvar alterações';
+      document.getElementById('examTitle').value = exam.title || '';
+      document.getElementById('examDateTime').value = exam.dateTime || '';
+      document.getElementById('examHoursPerDay').value = exam.hoursPerDay || '3';
+      document.getElementById('examImportance').value = exam.importance || '1';
+      const topicsInput = document.getElementById('examTopics');
+      if (topicsInput) {
+        const lines = Array.isArray(exam.topics) ? exam.topics.map(topic => {
+          const alvo = topic.alvo || '';
+          const weight = topic.weight !== undefined ? topic.weight : '';
+          const conf = Array.isArray(topic.confusables) ? topic.confusables.join(',') : '';
+          const parts = [alvo];
+          if (weight !== '' && weight !== null) parts.push(weight);
+          if (conf) parts.push(conf);
+          return parts.join('|');
+        }) : [];
+        topicsInput.value = lines.join('\n');
+      }
       modal.classList.add('active');
       setTimeout(() => {
         const input = document.getElementById('examTitle');
@@ -5649,6 +5775,7 @@
     function fecharNovaProva() {
       const modal = document.getElementById('examModal');
       if (modal) modal.classList.remove('active');
+      examEditingId = null;
     }
 
     function parseExamTopicsInput(value) {
@@ -5669,7 +5796,7 @@
       }).filter(item => item.alvo);
     }
 
-    function salvarNovaProva() {
+    function salvarProva() {
       const title = document.getElementById('examTitle').value.trim();
       const dateTime = document.getElementById('examDateTime').value;
       const hours = parseFloat(document.getElementById('examHoursPerDay').value);
@@ -5694,26 +5821,61 @@
       };
 
       setLoading(true);
-      google.script.run
+      const editingIdSnapshot = examEditingId || null;
+      const handler = examEditingId ? 'apiUpdateExam' : 'apiCreateExam';
+      if (examEditingId) {
+        payload.examId = examEditingId;
+        payload.id = examEditingId;
+      }
+
+      const runner = google.script.run
         .withSuccessHandler(function(result) {
           setLoading(false);
           if (!result || result.ok === false) {
             toast('Erro ao salvar prova: ' + (result && result.error ? result.error : ''), 'error');
+            if (editingIdSnapshot) {
+              examEditingId = null;
+            }
             return;
           }
           fecharNovaProva();
-          toast('Prova cadastrada!', 'success');
-          examsState.list.push(result.exam);
-          examsState.selectedId = result.exam.id;
+          const exam = result.exam;
+          if (!exam) {
+            toast('Resposta inesperada do servidor.', 'error');
+            return;
+          }
+          if (editingIdSnapshot) {
+            toast('Prova atualizada!', 'success');
+            const idx = examsState.list.findIndex(item => item && item.id === editingIdSnapshot);
+            if (idx >= 0) {
+              examsState.list[idx] = exam;
+            } else {
+              examsState.list.push(exam);
+            }
+            examsState.selectedId = exam.id;
+          } else {
+            toast('Prova cadastrada!', 'success');
+            examsState.list.push(exam);
+            examsState.selectedId = exam.id;
+          }
           localStorage.setItem('selectedExamId', examsState.selectedId);
           renderExamCards();
-          selecionarProva(result.exam.id, { skipFetch: false, silent: true });
+          selecionarProva(exam.id, { skipFetch: false, silent: true });
         })
         .withFailureHandler(function(error) {
           setLoading(false);
           toast('Erro ao salvar prova: ' + error.message, 'error');
-        })
-        .apiCreateExam(payload);
+          if (editingIdSnapshot) {
+            examEditingId = null;
+          }
+        });
+
+      if (typeof runner[handler] === 'function') {
+        runner[handler](payload);
+      } else {
+        setLoading(false);
+        toast('Operação de prova indisponível.', 'error');
+      }
     }
 
     function renderExamCards() {
@@ -5764,6 +5926,7 @@
             <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); gerarPlanoProva('${exam.id}')">Gerar plano</button>
             <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); sincronizarCalendarioDireto('${exam.id}')">Calendário</button>
             <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); verGuiaProva('${exam.id}')">Ver guia</button>
+            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); abrirEditarProva('${exam.id}')">Editar</button>
           </div>
         `;
 
