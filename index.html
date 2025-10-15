@@ -1614,6 +1614,130 @@
       gap: 10px;
     }
 
+    .daily-plan-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .daily-day {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .daily-day-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .daily-day-head strong {
+      font-size: 1.05rem;
+      color: var(--accent);
+    }
+
+    .daily-day-head .weekday {
+      margin-left: 8px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      text-transform: capitalize;
+    }
+
+    .daily-day-head span.plan-total {
+      color: var(--text-primary);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .daily-topics {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .daily-topic {
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 8px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.6);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .daily-topic-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .daily-topic-head strong {
+      font-size: 0.95rem;
+      color: var(--text-primary);
+    }
+
+    .daily-topic-head .chip {
+      font-size: 0.75rem;
+      background: rgba(59, 130, 246, 0.18);
+      color: var(--text-primary);
+      padding: 4px 10px;
+    }
+
+    .daily-topic-sub {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+    }
+
+    .daily-task-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .daily-task-list li {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+    }
+
+    .daily-task-list .task-technique {
+      font-weight: 600;
+      color: var(--accent);
+      min-width: 90px;
+    }
+
+    .daily-task-list .task-detail {
+      flex: 1 1 auto;
+    }
+
+    .daily-task-list .task-delta {
+      min-width: 72px;
+      text-align: right;
+      font-weight: 600;
+      color: #38ef7d;
+    }
+
+    .daily-task-list .task-delta.muted {
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
     .planner-chip {
       background: rgba(59, 130, 246, 0.12);
       color: #e0f2fe;
@@ -2755,6 +2879,14 @@
                 <div class="summary-line"><span>Dias até a prova</span><strong id="examPlanDays">—</strong></div>
               </div>
               <div id="examPlanChips" class="planner-chips"></div>
+            </div>
+
+            <div class="card" id="examPlanDailyCard">
+              <h3>Cronograma diário detalhado</h3>
+              <p class="helper-text">Visualize cada dia com os tópicos programados, técnicas sugeridas e ganhos estimados.</p>
+              <div id="examPlanDailyList" class="daily-plan-list">
+                <div class="empty-state">Gere o plano para visualizar o cronograma diário.</div>
+              </div>
             </div>
 
             <div class="card" id="examPlanSessionsCard">
@@ -6005,6 +6137,7 @@
       const deltaEl = document.getElementById('examPlanDelta');
       const daysEl = document.getElementById('examPlanDays');
       const chipsEl = document.getElementById('examPlanChips');
+      const dailyListEl = document.getElementById('examPlanDailyList');
       const exam = examsState.list.find(item => item.id === examsState.selectedId);
 
       if (titleEl) {
@@ -6016,6 +6149,9 @@
         if (deltaEl) deltaEl.textContent = '—';
         if (daysEl) daysEl.textContent = '—';
         if (chipsEl) chipsEl.innerHTML = '';
+        if (dailyListEl) {
+          dailyListEl.innerHTML = '<div class="empty-state">Gere o plano para visualizar o cronograma diário.</div>';
+        }
         return;
       }
 
@@ -6038,6 +6174,147 @@
           chipsEl.appendChild(chip);
         });
       }
+
+      renderExamDailyPlan(plan);
+    }
+
+    function renderExamDailyPlan(plan) {
+      const container = document.getElementById('examPlanDailyList');
+      if (!container) return;
+      container.innerHTML = '';
+      const daily = plan && Array.isArray(plan.daily) ? plan.daily : [];
+
+      if (daily.length === 0) {
+        container.innerHTML = '<div class="empty-state">Gere o plano para visualizar o cronograma diário.</div>';
+        return;
+      }
+
+      daily.forEach(day => {
+        const dayCard = document.createElement('div');
+        dayCard.className = 'daily-day';
+
+        const head = document.createElement('div');
+        head.className = 'daily-day-head';
+
+        const left = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = day.day || '—';
+        left.appendChild(title);
+        const dateObj = parseAppDate(day.dayIso || day.day);
+        if (dateObj) {
+          const weekday = document.createElement('span');
+          weekday.className = 'weekday';
+          weekday.textContent = dateObj.toLocaleDateString('pt-BR', { weekday: 'short' });
+          left.appendChild(weekday);
+        }
+
+        const totalSpan = document.createElement('span');
+        totalSpan.className = 'plan-total';
+        const minutesValue = isFinite(Number(day.totalMinutes)) ? Number(day.totalMinutes) : 0;
+        const deltaValue = isFinite(Number(day.totalDeltaRpp)) ? Number(day.totalDeltaRpp) : 0;
+        const deltaLabel = deltaValue > 0 ? `+${deltaValue.toFixed(1)} pp` : '+0.0 pp';
+        totalSpan.textContent = `${minutesValue.toFixed(0)} min · ${deltaLabel}`;
+
+        head.appendChild(left);
+        head.appendChild(totalSpan);
+
+        const topicsWrap = document.createElement('div');
+        topicsWrap.className = 'daily-topics';
+
+        const topics = Array.isArray(day.topics) ? day.topics : [];
+        if (topics.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'helper-text';
+          empty.textContent = 'Sem tarefas registradas para este dia.';
+          topicsWrap.appendChild(empty);
+        } else {
+          topics.forEach(topic => {
+            const topicDiv = document.createElement('div');
+            topicDiv.className = 'daily-topic';
+
+            const topicHead = document.createElement('div');
+            topicHead.className = 'daily-topic-head';
+
+            const topicName = document.createElement('strong');
+            topicName.textContent = topic.topic || 'Conteúdo';
+            topicHead.appendChild(topicName);
+
+            const chip = document.createElement('span');
+            chip.className = 'chip';
+            const topicMinutes = isFinite(Number(topic.totalMinutes)) ? Number(topic.totalMinutes) : 0;
+            const topicDelta = isFinite(Number(topic.deltaRpp)) ? Number(topic.deltaRpp) : 0;
+            let chipText = `${topicMinutes.toFixed(0)} min · ${topicDelta > 0 ? '+' + topicDelta.toFixed(1) : '+0.0'} pp`;
+            if (topic.stage) {
+              chipText += ` · ${topic.stage}`;
+            }
+            chip.textContent = chipText;
+            topicHead.appendChild(chip);
+
+            topicDiv.appendChild(topicHead);
+
+            const details = [];
+            if (topic.area) details.push(topic.area);
+            if (topic.status && topic.status !== 'NOVO') {
+              const statusLabel = topic.status === 'HISTORICO' ? 'Histórico' : topic.status;
+              details.push(statusLabel);
+            }
+            if (topic.stage && topic.stage === 'D1' && (!topic.status || topic.status === 'NOVO')) {
+              details.push('Início do conteúdo');
+            }
+            if (details.length) {
+              const sub = document.createElement('div');
+              sub.className = 'daily-topic-sub';
+              sub.textContent = details.join(' · ');
+              topicDiv.appendChild(sub);
+            }
+
+            const taskList = document.createElement('ul');
+            taskList.className = 'daily-task-list';
+
+            const tasks = Array.isArray(topic.tasks) ? topic.tasks : [];
+            if (tasks.length === 0) {
+              const emptyTask = document.createElement('li');
+              emptyTask.textContent = 'Sem tarefas definidas para este tópico.';
+              taskList.appendChild(emptyTask);
+            } else {
+              tasks.forEach(task => {
+                const item = document.createElement('li');
+
+                const techSpan = document.createElement('span');
+                techSpan.className = 'task-technique';
+                techSpan.textContent = task.technique || 'Sessão';
+
+                const detailSpan = document.createElement('span');
+                detailSpan.className = 'task-detail';
+                const minutesLabel = isFinite(Number(task.minutes)) ? `${Number(task.minutes).toFixed(0)} min` : '—';
+                detailSpan.textContent = task.notes ? `${minutesLabel} · ${task.notes}` : minutesLabel;
+
+                const deltaSpan = document.createElement('span');
+                deltaSpan.className = 'task-delta';
+                const taskDelta = isFinite(Number(task.deltaRpp)) ? Number(task.deltaRpp) : 0;
+                if (taskDelta > 0) {
+                  deltaSpan.textContent = `+${taskDelta.toFixed(1)} pp`;
+                } else {
+                  deltaSpan.textContent = '—';
+                  deltaSpan.classList.add('muted');
+                }
+
+                item.appendChild(techSpan);
+                item.appendChild(detailSpan);
+                item.appendChild(deltaSpan);
+                taskList.appendChild(item);
+              });
+            }
+
+            topicDiv.appendChild(taskList);
+            topicsWrap.appendChild(topicDiv);
+          });
+        }
+
+        dayCard.appendChild(head);
+        dayCard.appendChild(topicsWrap);
+        container.appendChild(dayCard);
+      });
     }
 
     function renderExamSessionsTable() {
@@ -6344,12 +6621,19 @@
             toast('Erro ao sincronizar calendário: ' + (result && result.error ? result.error : ''), 'error');
             return;
           }
-          toast('Evento criado no calendário!', 'success');
+          const examData = result.exam || {};
+          const fallback = examData.calendarStatus === 'fallback';
           const exam = examsState.list.find(item => item.id === examsState.selectedId);
           if (exam) {
-            exam.calendarEventId = result.exam ? result.exam.calendarEventId : 'sync';
+            exam.calendarEventId = examData.calendarEventId || exam.calendarEventId || 'sync';
           }
-          atualizarExamCalendarStatus('Calendário sincronizado com sucesso.');
+          if (fallback) {
+            toast('Não conseguimos criar o evento automaticamente. Verifique as permissões do calendário.', 'warning');
+            atualizarExamCalendarStatus('Crie o evento manualmente no Google Calendar para receber alertas.');
+          } else {
+            toast('Evento criado no calendário!', 'success');
+            atualizarExamCalendarStatus('Calendário sincronizado com sucesso.');
+          }
           renderExamCards();
         })
         .withFailureHandler(function(error) {

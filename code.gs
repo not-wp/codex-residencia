@@ -586,6 +586,23 @@ function allocateTopicSlots(topics, totalSlots) {
   return slots;
 }
 
+function rotateTopicsForDay(topics, dayIndex) {
+  if (!Array.isArray(topics) || topics.length === 0) {
+    return [];
+  }
+  const len = topics.length;
+  if (len === 1) {
+    return topics.slice();
+  }
+  const offsetRaw = isFinite(dayIndex) ? Number(dayIndex) : 0;
+  const shift = ((offsetRaw % len) + len) % len;
+  if (shift === 0) {
+    return topics.slice();
+  }
+  const rotated = topics.slice(shift).concat(topics.slice(0, shift));
+  return rotated;
+}
+
 function calculateDaysUntil(date) {
   const target = parseExamDateTime(date);
   if (!target) return 0;
@@ -644,12 +661,65 @@ function buildExamStudyPlan(exam, options, settings) {
   const sessions = [];
   const reviews = [];
   const areaSummary = {};
-  let totalDelta = 0;
+  const dailyPlans = new Map();
+  let totalDeltaRaw = 0;
+
+  const ensureDayEntry = (date, dayIndex) => {
+    const key = formatDateDDMMYYYY(date);
+    if (!dailyPlans.has(key)) {
+      const base = new Date(date.getTime());
+      base.setHours(0, 0, 0, 0);
+      dailyPlans.set(key, {
+        day: key,
+        dayIndex: isFinite(dayIndex) ? Number(dayIndex) : 0,
+        date: base,
+        topics: [],
+        totalMinutesRaw: 0,
+        totalDeltaRaw: 0,
+        _topicMap: {}
+      });
+    }
+    return dailyPlans.get(key);
+  };
+
+  const addTaskToDay = (entry, topic, minutes, deltaRaw, taskMeta) => {
+    if (!entry) return;
+    const safeMinutes = isFinite(minutes) ? Number(minutes) : 0;
+    const safeDelta = isFinite(deltaRaw) ? Number(deltaRaw) : 0;
+    const topicKey = topic && topic.alvo ? topic.alvo : (taskMeta && taskMeta.topicKey ? taskMeta.topicKey : `misc_${entry.topics.length}`);
+    const map = entry._topicMap || (entry._topicMap = {});
+    let topicEntry = map[topicKey];
+    if (!topicEntry) {
+      topicEntry = {
+        topic: topic && topic.alvo ? topic.alvo : (taskMeta && taskMeta.topicLabel ? taskMeta.topicLabel : 'Sessão'),
+        area: topic && topic.area ? topic.area : (taskMeta && taskMeta.area ? taskMeta.area : ''),
+        stage: taskMeta && taskMeta.stage ? taskMeta.stage : '',
+        status: taskMeta && taskMeta.status ? taskMeta.status : '',
+        tasks: [],
+        totalMinutesRaw: 0,
+        totalDeltaRaw: 0
+      };
+      map[topicKey] = topicEntry;
+      entry.topics.push(topicEntry);
+    }
+    topicEntry.tasks.push({
+      technique: taskMeta && taskMeta.technique ? taskMeta.technique : '',
+      minutes: Math.round(Math.max(0, safeMinutes)),
+      notes: taskMeta && taskMeta.notes ? taskMeta.notes : '',
+      mode: taskMeta && taskMeta.mode ? taskMeta.mode : '',
+      deltaRpp: Math.max(0, Math.round(safeDelta * 10) / 10)
+    });
+    topicEntry.totalMinutesRaw += safeMinutes;
+    topicEntry.totalDeltaRaw += Math.max(0, safeDelta);
+    entry.totalMinutesRaw += safeMinutes;
+    entry.totalDeltaRaw += Math.max(0, safeDelta);
+  };
 
   const scheduleSessionsForTopic = (topic, baseMinutes, gainResult, context) => {
     const contextDate = context && context.currentDate instanceof Date ? context.currentDate : today;
     const dayIndexValue = context && isFinite(context.dayIndex) ? Number(context.dayIndex) : 0;
     let sequenceCounter = context && isFinite(context.sequence) ? Number(context.sequence) : 1;
+    const dailyEntry = context && context.dailyEntry ? context.dailyEntry : null;
     const planGuide = gainResult && gainResult.plan ? gainResult.plan : null;
     const todayPlan = planGuide && planGuide.planToday ? planGuide.planToday : null;
     const statusGuide = planGuide && planGuide.status ? planGuide.status : null;
@@ -748,8 +818,8 @@ function buildExamStudyPlan(exam, options, settings) {
       effectiveTotalMinutes = minTotal;
     }
 
-    const deltaTotal = Math.max(0, Number(gainResult && gainResult.deltaRpp ? gainResult.deltaRpp : 0));
-    let accumulatedDelta = 0;
+    const deltaTotalRaw = Math.max(0, Number(gainResult && gainResult.deltaRpp ? gainResult.deltaRpp : 0));
+    let accumulatedRaw = 0;
     let allocatedMinutes = 0;
 
     tasks.forEach((task, idx) => {
@@ -764,22 +834,33 @@ function buildExamStudyPlan(exam, options, settings) {
       }
       allocatedMinutes += minutes;
 
-      let taskDelta = deltaTotal * share;
+      let taskDeltaRaw = deltaTotalRaw * share;
       if (idx === tasks.length - 1) {
-        taskDelta = Math.max(0, deltaTotal - accumulatedDelta);
+        taskDeltaRaw = Math.max(0, deltaTotalRaw - accumulatedRaw);
       }
-      const roundedDelta = Math.max(0, Math.round(taskDelta * 10) / 10);
-      accumulatedDelta += roundedDelta;
+      accumulatedRaw += taskDeltaRaw;
+      const roundedDelta = Math.max(0, Math.round(taskDeltaRaw * 10) / 10);
 
       const sessionId = generateRowId('sess');
       const parts = parseAlvoParts(topic.alvo || '');
       const areaLabel = parts.area || 'Geral';
       if (!areaSummary[areaLabel]) {
-        areaSummary[areaLabel] = { allocMin: 0, deltaRpp: 0 };
+        areaSummary[areaLabel] = { allocMin: 0, deltaRaw: 0 };
       }
       areaSummary[areaLabel].allocMin += minutes;
-      areaSummary[areaLabel].deltaRpp += roundedDelta;
-      totalDelta += roundedDelta;
+      areaSummary[areaLabel].deltaRaw += Math.max(0, taskDeltaRaw);
+      totalDeltaRaw += Math.max(0, taskDeltaRaw);
+
+      addTaskToDay(dailyEntry, topic, minutes, taskDeltaRaw, {
+        technique: task.technique,
+        notes: task.notes || '',
+        mode: task.mode || 'power',
+        stage: stageGuide || (statusGuide === 'NOVO' ? 'D1' : ''),
+        status: statusGuide || '',
+        area: parts.area || '',
+        topicLabel: topic.alvo || '',
+        topicKey: topic.alvo || ''
+      });
 
       sessions.push({
         id: sessionId,
@@ -835,6 +916,9 @@ function buildExamStudyPlan(exam, options, settings) {
     const dateLabel = formatDateDDMMYYYY(currentDate);
     let remainingMinutes = baseMinutes;
     let sequence = 1;
+    const dayEntry = ensureDayEntry(currentDate, dayIndex);
+    const dayTopics = rotateTopicsForDay(topics, dayIndex);
+    const effectiveTopics = dayTopics.length > 0 ? dayTopics : topics;
 
     let simMinutes = 0;
     if (regime.simuladoOffsets && regime.simuladoOffsets.indexOf(dayIndex) !== -1) {
@@ -843,6 +927,18 @@ function buildExamStudyPlan(exam, options, settings) {
       if (simMinutes > 0) {
         const sessionId = generateRowId('sess');
         const deltaEstimate = simMinutes * 0.05;
+        const simTopic = effectiveTopics.length > 0
+          ? effectiveTopics[dayIndex % effectiveTopics.length]
+          : (topics[dayIndex % topicCount] || topics[0]);
+        addTaskToDay(dayEntry, simTopic, simMinutes, deltaEstimate, {
+          technique: 'SIMULADO',
+          notes: 'Simulado completo',
+          mode: 'power',
+          stage: 'Simulado',
+          status: '',
+          topicLabel: simTopic && simTopic.alvo ? simTopic.alvo : 'Simulado',
+          area: simTopic && simTopic.area ? simTopic.area : ''
+        });
         sessions.push({
           id: sessionId,
           examId: exam.id,
@@ -853,7 +949,7 @@ function buildExamStudyPlan(exam, options, settings) {
           minutes: simMinutes,
           technique: 'SIMULADO',
           mode: 'power',
-          topic: topics[dayIndex % topicCount] ? topics[dayIndex % topicCount].alvo : exam.title,
+          topic: simTopic && simTopic.alvo ? simTopic.alvo : exam.title,
           confusableWith: '',
           pomodoroType: 'simulado',
           status: 'pending',
@@ -864,7 +960,7 @@ function buildExamStudyPlan(exam, options, settings) {
           updatedAt: formatDateTimeISO(new Date()),
           deltaRpp: Math.round(deltaEstimate * 10) / 10
         });
-        totalDelta += Math.round(deltaEstimate * 10) / 10;
+        totalDeltaRaw += Math.max(0, deltaEstimate);
         sequence += 1;
       }
     }
@@ -878,8 +974,8 @@ function buildExamStudyPlan(exam, options, settings) {
     const recallSlots = recallMinutes > 0 ? Math.max(1, Math.round(recallMinutes / recallBlock)) : 0;
     const reviewSlots = reviewMinutes > 0 ? Math.max(1, Math.round(reviewMinutes / reviewBlock)) : 0;
 
-    const recallAllocation = allocateTopicSlots(topics, recallSlots);
-    const reviewAllocation = allocateTopicSlots(topics, reviewSlots);
+    const recallAllocation = allocateTopicSlots(effectiveTopics, recallSlots);
+    const reviewAllocation = allocateTopicSlots(effectiveTopics, reviewSlots);
 
     const topicMinutesMap = new Map();
     const topicOrder = [];
@@ -897,12 +993,12 @@ function buildExamStudyPlan(exam, options, settings) {
     };
 
     recallAllocation.forEach(slotIndex => {
-      const topic = topics[slotIndex] || topics[0];
+      const topic = effectiveTopics[slotIndex] || effectiveTopics[0];
       addMinutesForTopic(topic, recallBlock);
     });
 
     reviewAllocation.forEach(slotIndex => {
-      const topic = topics[slotIndex] || topics[0];
+      const topic = effectiveTopics[slotIndex] || effectiveTopics[0];
       addMinutesForTopic(topic, reviewBlock);
     });
 
@@ -915,26 +1011,77 @@ function buildExamStudyPlan(exam, options, settings) {
       sequence = scheduleSessionsForTopic(entry.topic, minutes, gain, {
         currentDate,
         dayIndex,
-        sequence
+        sequence,
+        dailyEntry: dayEntry
       });
     });
   }
 
+  const dailyArray = Array.from(dailyPlans.values()).sort((a, b) => {
+    if (a.date instanceof Date && b.date instanceof Date) {
+      if (a.date.getTime() !== b.date.getTime()) {
+        return a.date.getTime() - b.date.getTime();
+      }
+    }
+    return (a.dayIndex || 0) - (b.dayIndex || 0);
+  });
+
+  const daily = dailyArray.map(entry => {
+    const iso = formatDateTimeISO(entry.date);
+    const topicsList = entry.topics.map(topic => ({
+      topic: topic.topic,
+      area: topic.area,
+      stage: topic.stage,
+      status: topic.status,
+      totalMinutes: Math.round(topic.totalMinutesRaw),
+      deltaRpp: Math.round(topic.totalDeltaRaw * 10) / 10,
+      tasks: topic.tasks.slice()
+    })).sort((a, b) => {
+      if (b.totalMinutes !== a.totalMinutes) {
+        return b.totalMinutes - a.totalMinutes;
+      }
+      return (a.topic || '').localeCompare(b.topic || '');
+    });
+    return {
+      day: entry.day,
+      dayIndex: entry.dayIndex,
+      dayIso: iso ? iso.slice(0, 10) : '',
+      totalMinutes: Math.round(entry.totalMinutesRaw),
+      totalDeltaRpp: Math.round(entry.totalDeltaRaw * 10) / 10,
+      topics: topicsList
+    };
+  });
+
   const areaList = Object.keys(areaSummary).map(area => ({
     area,
     allocMin: Math.round(areaSummary[area].allocMin),
-    deltaRpp: Math.round(areaSummary[area].deltaRpp * 10) / 10
+    deltaRpp: Math.round(areaSummary[area].deltaRaw * 10) / 10
   }));
+
+  sessions.sort((a, b) => {
+    const seqA = isFinite(a.sequence) ? Number(a.sequence) : 0;
+    const seqB = isFinite(b.sequence) ? Number(b.sequence) : 0;
+    if (Math.floor(seqA / 100) !== Math.floor(seqB / 100)) {
+      return Math.floor(seqA / 100) - Math.floor(seqB / 100);
+    }
+    if (seqA !== seqB) {
+      return seqA - seqB;
+    }
+    return (a.topic || '').localeCompare(b.topic || '');
+  });
 
   return {
     sessions,
     reviews,
     summary: {
       areas: areaList,
-      totalDelta: Math.round(totalDelta * 10) / 10,
-      totalMinutes: sessions.reduce((sum, item) => sum + (item.minutes || 0), 0)
+      totalDelta: Math.round(totalDeltaRaw * 10) / 10,
+      totalMinutes: daily.length > 0
+        ? Math.round(daily.reduce((sum, entry) => sum + (entry.totalMinutes || 0), 0) / daily.length)
+        : Math.round(sessions.reduce((sum, item) => sum + (item.minutes || 0), 0))
     },
-    days: daysUntil
+    days: daysUntil,
+    daily
   };
 }
 
@@ -1108,7 +1255,8 @@ function apiPlanExam(payload) {
         sessions: plan.sessions,
         reviews: plan.reviews,
         summary: plan.summary,
-        days: plan.days
+        days: plan.days,
+        daily: plan.daily
       }
     };
   } catch (e) {
@@ -1129,11 +1277,60 @@ function apiSyncExamCalendar(payload) {
     if (!exam) {
       return { ok: false, error: 'Prova não encontrada' };
     }
-    const eventId = `CAL_${generateRowId('evt')}`;
+    const examDate = exam.dateTime ? new Date(exam.dateTime.getTime()) : new Date();
+    examDate.setHours(0, 0, 0, 0);
+    const start = new Date(examDate.getTime());
+    start.setHours(8, 0, 0, 0);
+    const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+
+    let eventId = exam.calendarEventId || '';
+    let calendarLinked = false;
+    const descriptionLines = [
+      `Plano gerado no app em ${formatDateDDMMYYYY(new Date())}.`,
+      'Revise o cronograma diário na aba Provas para acompanhar sessões e revisões.'
+    ];
+
+    try {
+      if (typeof CalendarApp !== 'undefined' && CalendarApp.getDefaultCalendar) {
+        const calendar = CalendarApp.getDefaultCalendar();
+        const eventTitle = `Plano de estudos: ${exam.title}`;
+        let event = null;
+        if (eventId) {
+          try {
+            event = CalendarApp.getEventById(eventId);
+          } catch (err) {
+            event = null;
+          }
+        }
+        if (event) {
+          event.setTitle(eventTitle);
+          event.setTime(start, end);
+          event.setDescription(descriptionLines.join('\n'));
+        } else {
+          event = calendar.createEvent(eventTitle, start, end, {
+            description: descriptionLines.join('\n')
+          });
+          eventId = event.getId();
+        }
+        calendarLinked = true;
+      }
+    } catch (calendarError) {
+      // Caso o CalendarApp não esteja disponível ou falhe, seguimos com fallback.
+      calendarLinked = false;
+    }
+
+    if (!calendarLinked && !eventId) {
+      eventId = `CAL_${generateRowId('evt')}`;
+    }
+
     exam.calendarEventId = eventId;
     exam.updatedAt = new Date();
     persistExamRecord(exam);
-    return { ok: true, exam: serializeExamRecord(exam) };
+    const response = serializeExamRecord(exam);
+    if (!calendarLinked) {
+      response.calendarStatus = 'fallback';
+    }
+    return { ok: true, exam: response };
   } catch (e) {
     return { ok: false, error: e.toString() };
   }
