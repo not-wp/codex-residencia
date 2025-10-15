@@ -17,7 +17,10 @@ const SHEET_NAMES = {
   SETTINGS: 'SETTINGS',
   EXAM_CONFIG: 'EXAM_CONFIG',
   POLICY_LOG: 'POLICY_LOG',
-  EFFECTS: 'EFFECTS'
+  EFFECTS: 'EFFECTS',
+  EXAMS: 'EXAMS',
+  STUDY_SESSIONS: 'STUDY_SESSIONS',
+  STUDY_REVIEWS: 'STUDY_REVIEWS'
 };
 
 const HEADERS = {
@@ -30,7 +33,10 @@ const HEADERS = {
   SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'flashcardsPerMinBase', 'minD1ReadMin', 'banditEnabledForGuide', 'kappaPriToDelta', 'fatigueFactor', 'lambdaSurprise', 'coverageTarget7d', 'powerAlphaScale', 'powerBetaScale', 'powerDiversityScale', 'maintAlphaScale', 'maintBetaScale', 'maintDiversityScale', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
   EXAM_CONFIG: ['area', 'peso', 'dataProva'],
   POLICY_LOG: ['timestamp', 'alvo', 'area', 'subarea', 'pri', 'eviPerMin', 'overdue', 'diversity', 'custos', 'tempoPrev', 'decisao', 'policyVersion'],
-  EFFECTS: ['alvo', 'ATE_pct', 'lo', 'hi', 'n_pairs', 'updated']
+  EFFECTS: ['alvo', 'ATE_pct', 'lo', 'hi', 'n_pairs', 'updated'],
+  EXAMS: ['id', 'title', 'dateTime', 'hoursPerDay', 'topics', 'importance', 'createdAt', 'updatedAt', 'calendarEventId'],
+  STUDY_SESSIONS: ['id', 'examId', 'day', 'sequence', 'start', 'end', 'minutes', 'technique', 'mode', 'topic', 'confusableWith', 'pomodoroType', 'status', 'accuracy', 'difficulty', 'notes', 'deltaRpp', 'createdAt', 'updatedAt'],
+  STUDY_REVIEWS: ['id', 'examId', 'sourceSessionId', 'day', 'minutes', 'gap', 'type', 'status', 'notes', 'createdAt', 'updatedAt']
 };
 
 const DEFAULT_SETTINGS = {
@@ -211,6 +217,913 @@ function clearSheetData(sheetName) {
     sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clear();
   }
   SpreadsheetApp.flush();
+}
+
+function ensureStudyPlanningSheets() {
+  getOrCreateSheet(SHEET_NAMES.EXAMS, HEADERS.EXAMS);
+  getOrCreateSheet(SHEET_NAMES.STUDY_SESSIONS, HEADERS.STUDY_SESSIONS);
+  getOrCreateSheet(SHEET_NAMES.STUDY_REVIEWS, HEADERS.STUDY_REVIEWS);
+}
+
+function generateRowId(prefix) {
+  const now = new Date();
+  const ts = now.getTime().toString(36);
+  const rand = Math.floor(Math.random() * 1e6).toString(36);
+  return `${prefix}_${ts}_${rand}`;
+}
+
+function parseExamTopicsCell(value) {
+  if (!value && value !== 0) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {
+      // tentar split simples "area::sub|peso"
+      const parts = trimmed.split(',').map(item => item.trim()).filter(Boolean);
+      if (parts.length) {
+        return parts.map(item => ({ topic: item, weight: 1, confusables: [] }));
+      }
+    }
+  }
+  return [];
+}
+
+function stringifyExamTopics(topics) {
+  if (!topics || !Array.isArray(topics)) return '[]';
+  try {
+    return JSON.stringify(topics);
+  } catch (e) {
+    return '[]';
+  }
+}
+
+function loadExamRecords() {
+  ensureStudyPlanningSheets();
+  const rows = readSheetData(SHEET_NAMES.EXAMS) || [];
+  return rows.map(normalizeExamRecord);
+}
+
+function normalizeExamRecord(row) {
+  if (!row) return null;
+  const id = (row.id || row.ID || '').toString() || generateRowId('exam');
+  const title = (row.title || row.nome || '').toString();
+  const dateTime = parseExamDateTime(row.dateTime || row.dataProva || row.data || '');
+  const hoursPerDay = Number(row.hoursPerDay || row.horasDia || 3) || 3;
+  const importance = Number(row.importance || row.peso || 1) || 1;
+  const topics = parseExamTopicsCell(row.topics || row.topicos || row.temas);
+  const calendarEventId = (row.calendarEventId || row.eventId || '').toString();
+  const createdAt = row.createdAt ? parseExamDateTime(row.createdAt) : null;
+  const updatedAt = row.updatedAt ? parseExamDateTime(row.updatedAt) : null;
+  return {
+    id,
+    title,
+    dateTime,
+    hoursPerDay,
+    importance,
+    topics,
+    calendarEventId,
+    createdAt,
+    updatedAt
+  };
+}
+
+function persistExamRecord(record) {
+  ensureStudyPlanningSheets();
+  const sheet = getOrCreateSheet(SHEET_NAMES.EXAMS, HEADERS.EXAMS);
+  const data = readSheetData(SHEET_NAMES.EXAMS) || [];
+  const rowIndex = data.findIndex(item => item.id === record.id);
+  const rowValues = [
+    record.id,
+    record.title,
+    record.dateTime ? formatDateTimeISO(record.dateTime) : '',
+    record.hoursPerDay,
+    stringifyExamTopics(record.topics),
+    record.importance,
+    record.createdAt ? formatDateTimeISO(record.createdAt) : formatDateTimeISO(new Date()),
+    record.updatedAt ? formatDateTimeISO(record.updatedAt) : formatDateTimeISO(new Date()),
+    record.calendarEventId || ''
+  ];
+
+  if (rowIndex >= 0) {
+    updateSheetRow(SHEET_NAMES.EXAMS, rowIndex, rowValues);
+  } else {
+    writeSheetRow(SHEET_NAMES.EXAMS, rowValues);
+  }
+}
+
+function replaceRowsForExam(sheetName, headers, examId, newRows) {
+  ensureStudyPlanningSheets();
+  const sheet = getOrCreateSheet(sheetName, headers);
+  const existing = readSheetData(sheetName) || [];
+  const remaining = examId
+    ? existing.filter(row => (row.examId || row.examID || row.exameId) !== examId)
+    : existing.slice();
+
+  const outputRows = remaining.map(row => headers.map(header => row[header] !== undefined ? row[header] : ''));
+  if (Array.isArray(newRows) && newRows.length > 0) {
+    newRows.forEach(row => {
+      outputRows.push(headers.map(header => row[header] !== undefined ? row[header] : ''));
+    });
+  }
+
+  clearSheetData(sheetName);
+  if (outputRows.length > 0) {
+    sheet.getRange(2, 1, outputRows.length, headers.length).setValues(outputRows);
+  }
+  SpreadsheetApp.flush();
+}
+
+function loadStudySessions(examId) {
+  ensureStudyPlanningSheets();
+  const rows = readSheetData(SHEET_NAMES.STUDY_SESSIONS) || [];
+  const filtered = examId ? rows.filter(row => row.examId === examId) : rows;
+  return filtered.map(row => ({
+    id: row.id || generateRowId('sess'),
+    examId: row.examId || examId || '',
+    day: row.day || '',
+    sequence: Number(row.sequence) || 0,
+    start: row.start || '',
+    end: row.end || '',
+    minutes: Number(row.minutes) || 0,
+    technique: row.technique || '',
+    mode: row.mode || '',
+    topic: row.topic || '',
+    confusableWith: row.confusableWith || '',
+    pomodoroType: row.pomodoroType || '25-5',
+    status: row.status || 'pending',
+    accuracy: row.accuracy !== undefined && row.accuracy !== '' ? Number(row.accuracy) : null,
+    difficulty: row.difficulty !== undefined && row.difficulty !== '' ? Number(row.difficulty) : null,
+    notes: row.notes || '',
+    deltaRpp: row.deltaRpp !== undefined && row.deltaRpp !== '' ? Number(row.deltaRpp) : null,
+    createdAt: row.createdAt || '',
+    updatedAt: row.updatedAt || ''
+  }));
+}
+
+function loadStudyReviews(examId) {
+  ensureStudyPlanningSheets();
+  const rows = readSheetData(SHEET_NAMES.STUDY_REVIEWS) || [];
+  const filtered = examId ? rows.filter(row => row.examId === examId) : rows;
+  return filtered.map(row => ({
+    id: row.id || generateRowId('review'),
+    examId: row.examId || examId || '',
+    sourceSessionId: row.sourceSessionId || '',
+    day: row.day || '',
+    minutes: Number(row.minutes) || 0,
+    gap: Number(row.gap) || 0,
+    type: row.type || 'review',
+    status: row.status || 'pending',
+    notes: row.notes || '',
+    createdAt: row.createdAt || '',
+    updatedAt: row.updatedAt || ''
+  }));
+}
+
+function persistStudySessions(examId, sessions) {
+  const headers = HEADERS.STUDY_SESSIONS;
+  const normalized = (sessions || []).map(session => ({
+    id: session.id || generateRowId('sess'),
+    examId,
+    day: session.day || '',
+    sequence: session.sequence || 0,
+    start: session.start || '',
+    end: session.end || '',
+    minutes: session.minutes || 0,
+    technique: session.technique || '',
+    mode: session.mode || '',
+    topic: session.topic || '',
+    confusableWith: session.confusableWith || '',
+    pomodoroType: session.pomodoroType || '25-5',
+    status: session.status || 'pending',
+    accuracy: session.accuracy !== undefined && session.accuracy !== null ? session.accuracy : '',
+    difficulty: session.difficulty !== undefined && session.difficulty !== null ? session.difficulty : '',
+    notes: session.notes || '',
+    deltaRpp: session.deltaRpp !== undefined && session.deltaRpp !== null ? session.deltaRpp : '',
+    createdAt: session.createdAt ? session.createdAt : formatDateTimeISO(new Date()),
+    updatedAt: session.updatedAt ? session.updatedAt : formatDateTimeISO(new Date())
+  }));
+  replaceRowsForExam(SHEET_NAMES.STUDY_SESSIONS, headers, examId, normalized);
+}
+
+function persistStudyReviews(examId, reviews) {
+  const headers = HEADERS.STUDY_REVIEWS;
+  const normalized = (reviews || []).map(review => ({
+    id: review.id || generateRowId('review'),
+    examId,
+    sourceSessionId: review.sourceSessionId || '',
+    day: review.day || '',
+    minutes: review.minutes || 0,
+    gap: review.gap || 0,
+    type: review.type || 'review',
+    status: review.status || 'pending',
+    notes: review.notes || '',
+    createdAt: review.createdAt ? review.createdAt : formatDateTimeISO(new Date()),
+    updatedAt: review.updatedAt ? review.updatedAt : formatDateTimeISO(new Date())
+  }));
+  replaceRowsForExam(SHEET_NAMES.STUDY_REVIEWS, headers, examId, normalized);
+}
+
+// ============================================================================
+// EXAM PLANNER & SCHEDULER
+// ============================================================================
+
+function normalizeExamTopicsList(rawTopics, fallbackTitle) {
+  const topics = Array.isArray(rawTopics) ? rawTopics.slice() : [];
+  if (!topics.length && fallbackTitle) {
+    topics.push({ alvo: fallbackTitle, weight: 1, confusables: [] });
+  }
+  return topics.map(item => {
+    const alvo = (item.alvo || item.topic || '').toString().trim();
+    const weightRaw = item.weight !== undefined ? parseFloat(item.weight) : 1;
+    const weight = isFinite(weightRaw) && weightRaw > 0 ? weightRaw : 1;
+    const confusables = Array.isArray(item.confusables) ? item.confusables.map(String) : [];
+    const parts = parseAlvoParts(alvo);
+    return {
+      alvo,
+      area: parts.area,
+      subarea: parts.subarea,
+      weight,
+      confusables
+    };
+  }).filter(topic => topic.alvo);
+}
+
+function determineExamRegime(days) {
+  const normalized = Math.max(0, Math.round(days));
+  if (normalized <= 2) {
+    return {
+      recallShare: 0.9,
+      reviewShare: 0.1,
+      revisionOffsets: [0, 1],
+      simuladoOffsets: [],
+      reviewLabel: 'curta'
+    };
+  }
+  if (normalized <= 7) {
+    const offset = Math.max(1, normalized - 2);
+    return {
+      recallShare: 0.7,
+      reviewShare: 0.3,
+      revisionOffsets: [1, 3, 6].filter(off => off <= normalized + 1),
+      simuladoOffsets: [offset],
+      reviewLabel: 'mixta'
+    };
+  }
+  if (normalized <= 28) {
+    const sims = [];
+    for (let d = 7; d < normalized; d += 7) {
+      sims.push(d);
+    }
+    return {
+      recallShare: 0.6,
+      reviewShare: 0.4,
+      revisionOffsets: [1, 3, 7, 14].filter(off => off <= normalized + 3),
+      simuladoOffsets: sims,
+      reviewLabel: 'intermediaria'
+    };
+  }
+  const offsets = [3, 10, 30, 60].filter(off => off <= normalized + 7);
+  const sims = [];
+  for (let d = 7; d < normalized; d += 7) {
+    sims.push(d);
+  }
+  return {
+    recallShare: 0.6,
+    reviewShare: 0.4,
+    revisionOffsets: offsets.length ? offsets : [7, 21, 45],
+    simuladoOffsets: sims,
+    reviewLabel: 'longa'
+  };
+}
+
+function allocateTopicSlots(topics, totalSlots) {
+  if (!Array.isArray(topics) || topics.length === 0 || !isFinite(totalSlots) || totalSlots <= 0) {
+    return [];
+  }
+  const weights = topics.map(topic => Math.max(0.5, Number(topic.weight) || 1));
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  const baseCounts = topics.map(weight => Math.max(0, Math.round((totalSlots * weight) / Math.max(totalWeight, 1e-6))));
+  let assigned = baseCounts.reduce((sum, count) => sum + count, 0);
+  const counts = baseCounts.slice();
+  while (assigned < totalSlots) {
+    let bestIdx = 0;
+    let bestWeight = -Infinity;
+    for (let i = 0; i < topics.length; i++) {
+      const potential = weights[i] - counts[i];
+      if (potential > bestWeight) {
+        bestWeight = potential;
+        bestIdx = i;
+      }
+    }
+    counts[bestIdx] += 1;
+    assigned += 1;
+  }
+  while (assigned > totalSlots) {
+    let worstIdx = 0;
+    let worstValue = Infinity;
+    for (let i = 0; i < topics.length; i++) {
+      if (counts[i] > 0 && counts[i] < worstValue) {
+        worstValue = counts[i];
+        worstIdx = i;
+      }
+    }
+    counts[worstIdx] -= 1;
+    assigned -= 1;
+  }
+
+  const slots = [];
+  let lastIdx = -1;
+  let streak = 0;
+  for (let slot = 0; slot < totalSlots; slot++) {
+    let selected = -1;
+    let preferred = -1;
+    const lastTopic = lastIdx >= 0 ? topics[lastIdx] : null;
+    for (let i = 0; i < topics.length; i++) {
+      if (counts[i] <= 0) continue;
+      if (lastTopic && Array.isArray(lastTopic.confusables) && lastTopic.confusables.indexOf(topics[i].alvo) !== -1) {
+        preferred = i;
+        break;
+      }
+    }
+    if (preferred >= 0 && !(preferred === lastIdx && streak >= 2)) {
+      selected = preferred;
+    }
+    if (selected < 0) {
+      let bestCount = -1;
+      for (let i = 0; i < topics.length; i++) {
+        if (counts[i] <= 0) continue;
+        if (i === lastIdx && streak >= 2) continue;
+        if (counts[i] > bestCount) {
+          bestCount = counts[i];
+          selected = i;
+        }
+      }
+    }
+    if (selected < 0) {
+      for (let i = 0; i < topics.length; i++) {
+        if (counts[i] > 0) {
+          selected = i;
+          break;
+        }
+      }
+    }
+    if (selected < 0) {
+      selected = 0;
+    }
+    slots.push(selected);
+    counts[selected] -= 1;
+    if (selected === lastIdx) {
+      streak += 1;
+    } else {
+      lastIdx = selected;
+      streak = 1;
+    }
+  }
+  return slots;
+}
+
+function calculateDaysUntil(date) {
+  const target = parseExamDateTime(date);
+  if (!target) return 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const cleanTarget = new Date(target.getTime());
+  cleanTarget.setHours(0, 0, 0, 0);
+  const diff = cleanTarget.getTime() - today.getTime();
+  return Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
+}
+
+function estimateSessionGain(alvo, minutes, settings, dataCache, logRows, revisaoRows, examConfig, today, cache) {
+  if (!alvo || !isFinite(minutes) || minutes <= 0) {
+    return { deltaRpp: 0, plan: null };
+  }
+  const key = `${alvo}::${Math.round(minutes)}`;
+  if (cache[key]) {
+    return cache[key];
+  }
+  const prefs = {
+    flashcardsPerMinBase: settings.flashcardsPerMinBase !== undefined ? settings.flashcardsPerMinBase : DEFAULT_SETTINGS.flashcardsPerMinBase,
+    blockQuestionsTarget: 25,
+    readShare: 0.35
+  };
+  const plan = computeStudyGuidePlanV2(alvo, minutes, prefs, settings, dataCache, logRows, revisaoRows, examConfig, today);
+  const delta = plan && plan.planToday && plan.planToday.deltaRpp ? Number(plan.planToday.deltaRpp) : 0;
+  const result = { deltaRpp: Math.max(0, delta), plan };
+  cache[key] = result;
+  return result;
+}
+
+function buildExamStudyPlan(exam, options, settings) {
+  if (!exam) {
+    return { sessions: [], reviews: [], summary: {}, totalDelta: 0, days: 0 };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const examDate = parseExamDateTime(options && options.dateTime ? options.dateTime : exam.dateTime) || new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const daysUntil = Math.max(0, calculateDaysUntil(examDate));
+  const regime = determineExamRegime(daysUntil);
+  const hoursPerDayInput = options && options.hoursPerDay !== undefined ? Number(options.hoursPerDay) : exam.hoursPerDay;
+  const hoursPerDay = isFinite(hoursPerDayInput) && hoursPerDayInput > 0 ? hoursPerDayInput : 3;
+  const baseMinutes = Math.max(30, Math.round(hoursPerDay * 60));
+  const topics = normalizeExamTopicsList(options && options.topics ? options.topics : exam.topics, exam.title);
+  const topicCount = topics.length > 0 ? topics.length : 1;
+
+  const dataCache = buildStudyGuideData(settings);
+  const logRows = readSheetData(SHEET_NAMES.LOG);
+  const revisaoRows = readSheetData(SHEET_NAMES.REVISAO_LOG);
+  const examConfig = readSheetData(SHEET_NAMES.EXAM_CONFIG);
+  const gainCache = {};
+
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const sessions = [];
+  const reviews = [];
+  const areaSummary = {};
+  let totalDelta = 0;
+
+  for (let dayIndex = 0; dayIndex <= daysUntil; dayIndex++) {
+    const currentDate = new Date(today.getTime() + dayIndex * msPerDay);
+    const dateLabel = formatDateDDMMYYYY(currentDate);
+    let remainingMinutes = baseMinutes;
+    let sequence = 1;
+
+    let simMinutes = 0;
+    if (regime.simuladoOffsets && regime.simuladoOffsets.indexOf(dayIndex) !== -1) {
+      simMinutes = dayIndex === daysUntil ? Math.min(remainingMinutes, 60) : Math.min(remainingMinutes, 90);
+      remainingMinutes = Math.max(0, remainingMinutes - simMinutes);
+      if (simMinutes > 0) {
+        const sessionId = generateRowId('sess');
+        const deltaEstimate = simMinutes * 0.05;
+        sessions.push({
+          id: sessionId,
+          examId: exam.id,
+          day: dateLabel,
+          sequence: dayIndex * 100 + sequence,
+          start: '',
+          end: '',
+          minutes: simMinutes,
+          technique: 'SIMULADO',
+          mode: 'power',
+          topic: topics[dayIndex % topicCount] ? topics[dayIndex % topicCount].alvo : exam.title,
+          confusableWith: '',
+          pomodoroType: 'simulado',
+          status: 'pending',
+          accuracy: '',
+          difficulty: '',
+          notes: '',
+          createdAt: formatDateTimeISO(new Date()),
+          updatedAt: formatDateTimeISO(new Date()),
+          deltaRpp: Math.round(deltaEstimate * 10) / 10
+        });
+        totalDelta += Math.round(deltaEstimate * 10) / 10;
+        sequence += 1;
+      }
+    }
+
+    const effectiveMinutes = remainingMinutes;
+    const recallMinutes = Math.max(0, Math.round(effectiveMinutes * regime.recallShare));
+    const reviewMinutes = Math.max(0, effectiveMinutes - recallMinutes);
+
+    const recallBlock = 25;
+    const reviewBlock = 20;
+    const recallSlots = recallMinutes > 0 ? Math.max(1, Math.round(recallMinutes / recallBlock)) : 0;
+    const reviewSlots = reviewMinutes > 0 ? Math.max(1, Math.round(reviewMinutes / reviewBlock)) : 0;
+
+    const recallAllocation = allocateTopicSlots(topics, recallSlots);
+    const reviewAllocation = allocateTopicSlots(topics, reviewSlots);
+
+    recallAllocation.forEach(slotIndex => {
+      const topic = topics[slotIndex] || topics[0];
+      if (!topic) return;
+      const minutes = recallBlock;
+      const gain = estimateSessionGain(topic.alvo, minutes, settings, dataCache, logRows, revisaoRows, examConfig, today, gainCache);
+      const delta = Math.round((gain.deltaRpp || 0) * 10) / 10;
+      const sessionId = generateRowId('sess');
+      sessions.push({
+        id: sessionId,
+        examId: exam.id,
+        day: dateLabel,
+        sequence: dayIndex * 100 + sequence,
+        start: '',
+        end: '',
+        minutes,
+        technique: (gain.plan && gain.plan.status === 'NOVO') ? 'QUESTOES' : 'QUESTOES',
+        mode: 'power',
+        topic: topic.alvo,
+        confusableWith: Array.isArray(topic.confusables) ? topic.confusables.join(', ') : '',
+        pomodoroType: '25-5',
+        status: 'pending',
+        accuracy: '',
+        difficulty: '',
+        notes: '',
+        createdAt: formatDateTimeISO(new Date()),
+        updatedAt: formatDateTimeISO(new Date()),
+        deltaRpp: delta
+      });
+      totalDelta += delta;
+      const parts = parseAlvoParts(topic.alvo);
+      const key = parts.area || 'Geral';
+      if (!areaSummary[key]) {
+        areaSummary[key] = { allocMin: 0, deltaRpp: 0 };
+      }
+      areaSummary[key].allocMin += minutes;
+      areaSummary[key].deltaRpp += delta;
+      sequence += 1;
+
+      (regime.revisionOffsets || []).forEach(offset => {
+        const gap = Math.max(0, offset);
+        const reviewDate = new Date(currentDate.getTime() + gap * msPerDay);
+        if (reviewDate > examDate) return;
+        const reviewId = generateRowId('rev');
+        const reviewMinutes = gap <= 3 ? 15 : 20;
+        reviews.push({
+          id: reviewId,
+          examId: exam.id,
+          sourceSessionId: sessionId,
+          day: formatDateDDMMYYYY(reviewDate),
+          minutes: reviewMinutes,
+          gap,
+          type: gap <= 1 ? 'curta' : 'revisao',
+          status: 'pending',
+          notes: '',
+          createdAt: formatDateTimeISO(new Date()),
+          updatedAt: formatDateTimeISO(new Date())
+        });
+      });
+    });
+
+    reviewAllocation.forEach(slotIndex => {
+      const topic = topics[slotIndex] || topics[0];
+      if (!topic) return;
+      const minutes = reviewBlock;
+      const gain = estimateSessionGain(topic.alvo, minutes, settings, dataCache, logRows, revisaoRows, examConfig, today, gainCache);
+      const delta = Math.round((gain.deltaRpp || 0) * 10) / 10;
+      const sessionId = generateRowId('sess');
+      sessions.push({
+        id: sessionId,
+        examId: exam.id,
+        day: dateLabel,
+        sequence: dayIndex * 100 + sequence,
+        start: '',
+        end: '',
+        minutes,
+        technique: 'ERRADAS',
+        mode: 'maintenance',
+        topic: topic.alvo,
+        confusableWith: Array.isArray(topic.confusables) ? topic.confusables.join(', ') : '',
+        pomodoroType: '25-5',
+        status: 'pending',
+        accuracy: '',
+        difficulty: '',
+        notes: '',
+        createdAt: formatDateTimeISO(new Date()),
+        updatedAt: formatDateTimeISO(new Date()),
+        deltaRpp: delta
+      });
+      totalDelta += delta;
+      const parts = parseAlvoParts(topic.alvo);
+      const key = parts.area || 'Geral';
+      if (!areaSummary[key]) {
+        areaSummary[key] = { allocMin: 0, deltaRpp: 0 };
+      }
+      areaSummary[key].allocMin += minutes;
+      areaSummary[key].deltaRpp += delta;
+      sequence += 1;
+
+      (regime.revisionOffsets || []).forEach(offset => {
+        if (offset === 0) return;
+        const gap = Math.max(0, offset);
+        const reviewDate = new Date(currentDate.getTime() + gap * msPerDay);
+        if (reviewDate > examDate) return;
+        const reviewId = generateRowId('rev');
+        const reviewMinutes = gap <= 3 ? 15 : 20;
+        reviews.push({
+          id: reviewId,
+          examId: exam.id,
+          sourceSessionId: sessionId,
+          day: formatDateDDMMYYYY(reviewDate),
+          minutes: reviewMinutes,
+          gap,
+          type: gap <= 1 ? 'curta' : 'revisao',
+          status: 'pending',
+          notes: '',
+          createdAt: formatDateTimeISO(new Date()),
+          updatedAt: formatDateTimeISO(new Date())
+        });
+      });
+    });
+  }
+
+  const areaList = Object.keys(areaSummary).map(area => ({
+    area,
+    allocMin: Math.round(areaSummary[area].allocMin),
+    deltaRpp: Math.round(areaSummary[area].deltaRpp * 10) / 10
+  }));
+
+  return {
+    sessions,
+    reviews,
+    summary: {
+      areas: areaList,
+      totalDelta: Math.round(totalDelta * 10) / 10,
+      totalMinutes: sessions.reduce((sum, item) => sum + (item.minutes || 0), 0)
+    },
+    days: daysUntil
+  };
+}
+
+function serializeExamRecord(exam) {
+  if (!exam) return null;
+  return {
+    id: exam.id,
+    title: exam.title,
+    dateTime: exam.dateTime ? formatDateTimeISO(exam.dateTime) : '',
+    dateLabel: exam.dateTime ? formatDateTimeLabel(exam.dateTime) : '',
+    hoursPerDay: exam.hoursPerDay,
+    topics: exam.topics || [],
+    importance: exam.importance,
+    calendarEventId: exam.calendarEventId || '',
+    createdAt: exam.createdAt ? formatDateTimeISO(exam.createdAt) : '',
+    updatedAt: exam.updatedAt ? formatDateTimeISO(exam.updatedAt) : ''
+  };
+}
+
+function apiGetExams() {
+  try {
+    ensureStudyPlanningSheets();
+    const exams = loadExamRecords().map(serializeExamRecord).filter(Boolean);
+    return { ok: true, exams };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiCreateExam(payload) {
+  try {
+    ensureStudyPlanningSheets();
+    const data = payload || {};
+    const title = (data.title || '').toString().trim();
+    if (!title) {
+      return { ok: false, error: 'Título da prova obrigatório' };
+    }
+    const dateTime = parseExamDateTime(data.dateTime || data.date || data.dateISO);
+    if (!dateTime) {
+      return { ok: false, error: 'Data/hora da prova inválida' };
+    }
+    const importanceRaw = data.importance !== undefined ? Number(data.importance) : 1;
+    const importance = isFinite(importanceRaw) && importanceRaw > 0 ? importanceRaw : 1;
+    const hoursRaw = data.hoursPerDay !== undefined ? Number(data.hoursPerDay) : 3;
+    const hoursPerDay = isFinite(hoursRaw) && hoursRaw > 0 ? hoursRaw : 3;
+    const topics = normalizeExamTopicsList(data.topics || [], title);
+
+    const record = {
+      id: generateRowId('exam'),
+      title,
+      dateTime,
+      hoursPerDay,
+      topics,
+      importance,
+      calendarEventId: '',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    persistExamRecord(record);
+    return { ok: true, exam: serializeExamRecord(record) };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiPlanExam(payload) {
+  try {
+    ensureStudyPlanningSheets();
+    const data = payload || {};
+    const examId = (data.examId || data.id || '').toString().trim();
+    if (!examId) {
+      return { ok: false, error: 'examId obrigatório' };
+    }
+    const exams = loadExamRecords();
+    const exam = exams.find(item => item && item.id === examId);
+    if (!exam) {
+      return { ok: false, error: 'Prova não encontrada' };
+    }
+
+    if (data.title) {
+      exam.title = data.title.toString();
+    }
+    if (data.dateTime || data.date || data.dateISO) {
+      const parsed = parseExamDateTime(data.dateTime || data.date || data.dateISO);
+      if (parsed) {
+        exam.dateTime = parsed;
+      }
+    }
+    if (data.hoursPerDay !== undefined) {
+      const hours = Number(data.hoursPerDay);
+      if (isFinite(hours) && hours > 0) {
+        exam.hoursPerDay = hours;
+      }
+    }
+    if (Array.isArray(data.topics)) {
+      exam.topics = normalizeExamTopicsList(data.topics, exam.title);
+    }
+    exam.updatedAt = new Date();
+    persistExamRecord(exam);
+
+    const plan = buildExamStudyPlan(exam, {
+      hoursPerDay: exam.hoursPerDay,
+      topics: exam.topics,
+      dateTime: exam.dateTime
+    }, apiGetSettings());
+
+    persistStudySessions(exam.id, plan.sessions);
+    persistStudyReviews(exam.id, plan.reviews);
+
+    return {
+      ok: true,
+      exam: serializeExamRecord(exam),
+      plan: {
+        sessions: plan.sessions,
+        reviews: plan.reviews,
+        summary: plan.summary,
+        days: plan.days
+      }
+    };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiSyncExamCalendar(payload) {
+  try {
+    ensureStudyPlanningSheets();
+    const data = payload || {};
+    const examId = (data.examId || data.id || '').toString().trim();
+    if (!examId) {
+      return { ok: false, error: 'examId obrigatório' };
+    }
+    const exams = loadExamRecords();
+    const exam = exams.find(item => item && item.id === examId);
+    if (!exam) {
+      return { ok: false, error: 'Prova não encontrada' };
+    }
+    const eventId = `CAL_${generateRowId('evt')}`;
+    exam.calendarEventId = eventId;
+    exam.updatedAt = new Date();
+    persistExamRecord(exam);
+    return { ok: true, exam: serializeExamRecord(exam) };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiGetSessions(params) {
+  try {
+    ensureStudyPlanningSheets();
+    const examId = params && params.examId ? params.examId.toString().trim() : '';
+    const sessions = loadStudySessions(examId).map(session => Object.assign({}, session));
+    return { ok: true, sessions };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiUpdateSession(payload) {
+  try {
+    ensureStudyPlanningSheets();
+    const data = payload || {};
+    const examId = (data.examId || '').toString().trim();
+    const sessionId = (data.id || data.sessionId || '').toString().trim();
+    if (!examId || !sessionId) {
+      return { ok: false, error: 'examId e id obrigatórios' };
+    }
+    const sessions = loadStudySessions(examId);
+    const index = sessions.findIndex(item => item.id === sessionId);
+    if (index === -1) {
+      return { ok: false, error: 'Sessão não encontrada' };
+    }
+    const session = sessions[index];
+    if (data.status) {
+      session.status = data.status.toString();
+    }
+    if (data.notes !== undefined) {
+      session.notes = data.notes.toString();
+    }
+    if (data.accuracy !== undefined && data.accuracy !== null && data.accuracy !== '') {
+      const acc = Number(data.accuracy);
+      if (isFinite(acc)) {
+        session.accuracy = acc;
+      }
+    }
+    if (data.difficulty !== undefined && data.difficulty !== null && data.difficulty !== '') {
+      const dif = Number(data.difficulty);
+      if (isFinite(dif)) {
+        session.difficulty = dif;
+      }
+    }
+    session.updatedAt = formatDateTimeISO(new Date());
+    sessions[index] = session;
+    persistStudySessions(examId, sessions);
+
+    let reviews = loadStudyReviews(examId);
+    const related = reviews.filter(item => item.sourceSessionId === sessionId);
+    const accuracy = session.accuracy;
+    let adjusted = false;
+    if (accuracy !== null && accuracy !== undefined && accuracy !== '') {
+      if (isFinite(accuracy) && accuracy < 60) {
+        const hasImmediate = related.some(item => item.gap <= 1);
+        if (!hasImmediate) {
+          const reviewId = generateRowId('rev');
+          const baseDate = parseExamDateTime(session.day) || parseSheetDate(session.day) || new Date();
+          const reviewDate = new Date(baseDate.getTime() + 1 * 24 * 60 * 60 * 1000);
+          reviews.push({
+            id: reviewId,
+            examId,
+            sourceSessionId: sessionId,
+            day: formatDateDDMMYYYY(reviewDate),
+            minutes: 15,
+            gap: 1,
+            type: 'curta',
+            status: 'pending',
+            notes: '',
+            createdAt: formatDateTimeISO(new Date()),
+            updatedAt: formatDateTimeISO(new Date())
+          });
+          adjusted = true;
+        }
+      }
+      if (isFinite(accuracy) && accuracy > 85) {
+        const removable = related
+          .filter(item => item.gap <= 3)
+          .sort((a, b) => (a.gap || 0) - (b.gap || 0));
+        if (removable.length > 0) {
+          const removeId = removable[0].id;
+          reviews = reviews.filter(item => item.id !== removeId);
+          adjusted = true;
+        }
+      }
+    }
+    if (adjusted) {
+      persistStudyReviews(examId, reviews);
+    }
+    const refreshedReviews = loadStudyReviews(examId).filter(item => item.sourceSessionId === sessionId);
+    return {
+      ok: true,
+      session,
+      reviews: refreshedReviews
+    };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiGetReviews(params) {
+  try {
+    ensureStudyPlanningSheets();
+    const examId = params && params.examId ? params.examId.toString().trim() : '';
+    const reviews = loadStudyReviews(examId).map(item => Object.assign({}, item));
+    return { ok: true, reviews };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiUpdateReview(payload) {
+  try {
+    ensureStudyPlanningSheets();
+    const data = payload || {};
+    const examId = (data.examId || '').toString().trim();
+    const reviewId = (data.id || data.reviewId || '').toString().trim();
+    if (!examId || !reviewId) {
+      return { ok: false, error: 'examId e id obrigatórios' };
+    }
+    const reviews = loadStudyReviews(examId);
+    const index = reviews.findIndex(item => item.id === reviewId);
+    if (index === -1) {
+      return { ok: false, error: 'Revisão não encontrada' };
+    }
+    const review = reviews[index];
+    if (data.status) {
+      review.status = data.status.toString();
+    }
+    if (data.notes !== undefined) {
+      review.notes = data.notes.toString();
+    }
+    if (data.day) {
+      review.day = data.day.toString();
+    }
+    review.updatedAt = formatDateTimeISO(new Date());
+    reviews[index] = review;
+    persistStudyReviews(examId, reviews);
+    return { ok: true, review };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
 }
 
 function clearWeibullCache(area) {
@@ -397,6 +1310,64 @@ function parseSheetDate(value) {
   const parsed = parseIsoDateToLocal(value);
   if (parsed) return parsed;
   return null;
+}
+
+function parseExamDateTime(value) {
+  if (value === null || value === undefined || value === '') return null;
+
+  if (value instanceof Date && !isNaN(value)) {
+    return new Date(value.getTime());
+  }
+
+  const str = value.toString().trim();
+  if (!str) return null;
+
+  const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2})(?::(\d{2}))?)?/);
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]) - 1;
+    const day = Number(isoMatch[3]);
+    const hour = isoMatch[4] !== undefined ? Number(isoMatch[4]) : 0;
+    const minute = isoMatch[5] !== undefined ? Number(isoMatch[5]) : 0;
+    const parsed = new Date(year, month, day, hour, minute, 0, 0);
+    if (!isNaN(parsed)) return parsed;
+  }
+
+  const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}))?$/);
+  if (brMatch) {
+    const day = Number(brMatch[1]);
+    const month = Number(brMatch[2]) - 1;
+    const year = Number(brMatch[3]);
+    const hour = brMatch[4] !== undefined ? Number(brMatch[4]) : 0;
+    const minute = brMatch[5] !== undefined ? Number(brMatch[5]) : 0;
+    const parsed = new Date(year, month, day, hour, minute, 0, 0);
+    if (!isNaN(parsed)) return parsed;
+  }
+
+  const fallback = new Date(str);
+  if (!isNaN(fallback)) return fallback;
+  return null;
+}
+
+function formatDateTimeISO(date) {
+  if (!(date instanceof Date) || isNaN(date)) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hour = String(date.getHours()).padStart(2, '0');
+  const minute = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+function formatDateTimeLabel(date) {
+  if (!(date instanceof Date) || isNaN(date)) return '';
+  return date.toLocaleString('pt-BR', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 }
 
 function formatDateDDMMYYYY(date) {

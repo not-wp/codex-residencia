@@ -182,6 +182,218 @@
       font-size: 0.95rem;
     }
 
+    .exam-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .exam-cards {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      margin-top: 12px;
+    }
+
+    .exam-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      background: rgba(30, 41, 59, 0.65);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+    }
+
+    .exam-card:hover {
+      border-color: var(--accent);
+      box-shadow: var(--shadow);
+    }
+
+    .exam-card.selected {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35);
+    }
+
+    .exam-card h4 {
+      margin-bottom: 4px;
+      color: var(--text-primary);
+    }
+
+    .exam-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 8px 0 12px 0;
+    }
+
+    .exam-meta .chip {
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent-alt);
+    }
+
+    .exam-actions-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .exam-plan-summary {
+      display: grid;
+      gap: 8px;
+      margin: 12px 0;
+    }
+
+    .summary-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-secondary);
+    }
+
+    .summary-line strong {
+      color: var(--text-primary);
+      font-size: 1.1rem;
+    }
+
+    .responsive-table {
+      overflow-x: auto;
+    }
+
+    .timer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      gap: 12px;
+    }
+
+    .timer-display {
+      font-size: 3.2rem;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .timer-controls {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+
+    .timer-cycle {
+      text-align: center;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+    }
+
+    .session-feedback {
+      display: grid;
+      gap: 12px;
+    }
+
+    .feedback-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+
+    .session-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .calendar-actions {
+      margin-top: 16px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .toggle-long-read {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.75);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 60;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      padding: 24px;
+      width: min(480px, 100%);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 16px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-grid {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    .assign-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .modal-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    .modal-checkbox input {
+      width: 16px;
+      height: 16px;
+    }
+
+    .assign-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
         .card h2 {
       font-size: 1.4rem;
       margin-bottom: 16px;
@@ -1986,6 +2198,7 @@
           <button class="tab" data-page="lancar" onclick="switchPage('lancar', event)">Lançar Bloco</button>
           <button class="tab" data-page="revisoes" onclick="switchPage('revisoes', event)">Revisões</button>
           <button class="tab" data-page="guiaEstudo" onclick="switchPage('guiaEstudo', event)">Guia de Estudo</button>
+          <button class="tab" data-page="provas" onclick="switchPage('provas', event)">Provas</button>
           <button class="tab" data-page="planejamentoSemanal" onclick="switchPage('planejamentoSemanal', event)">Planejamento Semanal</button>
           <button class="tab" data-page="ajustes" onclick="switchPage('ajustes', event)">Ajustes</button>
         </div>
@@ -2485,6 +2698,161 @@
             </div>
           </div>
         </section>
+    </div>
+  </div>
+    <div id="provas" class="page">
+      <div class="flow-wrapper">
+        <section class="flow-step" id="examStepList">
+          <div class="flow-step-head">
+            <span class="flow-step-index">1</span>
+            <div>
+              <h2>Cadastre suas provas</h2>
+              <p class="flow-step-subtitle">Informe datas, tópicos e importância para acompanhar cada exame dentro do seu fluxo diário.</p>
+            </div>
+          </div>
+          <div class="flow-step-body">
+            <div class="card">
+              <div class="card-header-inline">
+                <h3>Agenda de provas</h3>
+                <div class="exam-actions">
+                  <button type="button" class="btn btn-secondary" onclick="abrirNovaProva()">➕ Nova prova</button>
+                  <button type="button" class="btn btn-secondary" onclick="carregarProvas(true)">🔄 Atualizar</button>
+                </div>
+              </div>
+              <p class="helper-text">Selecione uma prova para gerar o plano semanal de sessões e revisões automáticas.</p>
+              <div id="examCardsContainer" class="exam-cards">
+                <div class="empty-state">Nenhuma prova cadastrada. Clique em “Nova prova”.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="flow-step" id="examStepPlan">
+          <div class="flow-step-head">
+            <span class="flow-step-index">2</span>
+            <div>
+              <h2>Gere o plano do exame</h2>
+              <p class="flow-step-subtitle">O planejador distribui Pomodoros, interleaving e revisões com retornos decrescentes.</p>
+            </div>
+          </div>
+          <div class="flow-step-body">
+            <div class="card" id="examPlanSummaryCard">
+              <div class="card-header-inline">
+                <h3 id="examPlanTitle">Plano diário</h3>
+                <button type="button" class="btn btn-secondary" onclick="gerarPlanoProvaSelecionada()">🧠 Gerar plano</button>
+              </div>
+              <p class="helper-text" id="examPlanHelper">Selecione uma prova para calcular o plano proporcional ao ganho esperado.</p>
+              <div class="exam-plan-summary">
+                <div class="summary-line"><span>Total previsto</span><strong id="examPlanTotal">—</strong></div>
+                <div class="summary-line"><span>Ganho estimado</span><strong id="examPlanDelta">—</strong></div>
+                <div class="summary-line"><span>Dias até a prova</span><strong id="examPlanDays">—</strong></div>
+              </div>
+              <div id="examPlanChips" class="planner-chips"></div>
+            </div>
+
+            <div class="card" id="examPlanSessionsCard">
+              <h3>Sessões programadas</h3>
+              <p class="helper-text">A sequência alterna temas confundíveis e calcula ganhos com base no bandit + curva Weibull.</p>
+              <div class="responsive-table">
+                <table class="compact-table" id="examSessionsTable">
+                  <thead>
+                    <tr>
+                      <th>Dia</th>
+                      <th>Técnica</th>
+                      <th>Tópico</th>
+                      <th>Min</th>
+                      <th>ΔR (%)</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td colspan="6" class="empty-state">Gere o plano para ver as sessões.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="flow-step" id="examStepSession">
+          <div class="flow-step-head">
+            <span class="flow-step-index">3</span>
+            <div>
+              <h2>Execute as sessões</h2>
+              <p class="flow-step-subtitle">Use o timer Pomodoro, registre accuracy/dificuldade e veja as dicas rápidas de técnica.</p>
+            </div>
+          </div>
+          <div class="flow-step-body">
+            <div class="card" id="examTimerCard">
+              <div class="timer-header">
+                <div>
+                  <h3 id="timerSessionTitle">Sessão atual</h3>
+                  <p class="helper-text" id="timerSessionInfo">Selecione uma sessão na tabela acima para iniciar.</p>
+                </div>
+                <label class="toggle-long-read">
+                  <input type="checkbox" id="timerLongReadToggle"> Leitura longa (50-10)
+                </label>
+              </div>
+              <div class="timer-display" id="sessionTimerDisplay">25:00</div>
+              <div class="timer-controls">
+                <button type="button" class="btn btn-primary" onclick="iniciarTimerSessao()">▶️ Iniciar</button>
+                <button type="button" class="btn btn-secondary" onclick="pausarTimerSessao()">⏸️ Pausar</button>
+                <button type="button" class="btn btn-secondary" onclick="resetarTimerSessao()">↺ Resetar</button>
+              </div>
+              <div class="timer-cycle" id="timerCycleInfo">Ciclo 1 · pausa curta em 25:00</div>
+              <form id="sessionFeedbackForm" class="session-feedback" onsubmit="return false;">
+                <h4>Feedback rápido</h4>
+                <div class="feedback-grid">
+                  <label>Accuracy (%)<input type="number" id="sessionAccuracy" min="0" max="100" step="1"></label>
+                  <label>Dificuldade (1-5)<input type="number" id="sessionDifficulty" min="1" max="5" step="1"></label>
+                </div>
+                <label>Notas
+                  <textarea id="sessionNotes" rows="2" placeholder="Observações da sessão"></textarea>
+                </label>
+                <div class="session-actions">
+                  <button type="button" class="btn btn-primary" onclick="registrarSessaoEstudo()">✅ Salvar sessão</button>
+                  <button type="button" class="btn btn-secondary" onclick="mostrarDicaTecnica()">ⓘ Como fazer</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </section>
+
+        <section class="flow-step" id="examStepReviews">
+          <div class="flow-step-head">
+            <span class="flow-step-index">4</span>
+            <div>
+              <h2>Acompanhe revisões automáticas</h2>
+              <p class="flow-step-subtitle">Visualize os gaps programados e ajuste manualmente quando necessário.</p>
+            </div>
+          </div>
+          <div class="flow-step-body">
+            <div class="card" id="examReviewsCard">
+              <h3>Revisões previstas</h3>
+              <div class="responsive-table">
+                <table class="compact-table" id="examReviewsTable">
+                  <thead>
+                    <tr>
+                      <th>Dia</th>
+                      <th>Fonte</th>
+                      <th>Min</th>
+                      <th>Gap</th>
+                      <th>Status</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td colspan="6" class="empty-state">Nenhuma revisão gerada.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="calendar-actions">
+                <button type="button" class="btn btn-secondary" onclick="sincronizarCalendarioProva()">📆 Adicionar ao calendário</button>
+                <span id="examCalendarStatus" class="helper-text">Conecte o plano ao seu calendário para notificações.</span>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
     <div id="planejamentoSemanal" class="page">
@@ -2825,6 +3193,56 @@
     <div id="dayDetailsContent" class="drawer-content"></div>
   </aside>
 
+  <div id="examModal" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h3>Nova prova</h3>
+        <button class="btn-icon" onclick="fecharNovaProva()" aria-label="Fechar">✕</button>
+      </header>
+      <form id="examForm" onsubmit="return false;">
+        <label>Título
+          <input type="text" id="examTitle" placeholder="Ex: SUS-SP" required>
+        </label>
+        <label>Data e hora
+          <input type="datetime-local" id="examDateTime" required>
+        </label>
+        <div class="modal-grid">
+          <label>Horas por dia
+            <input type="number" id="examHoursPerDay" min="1" max="12" step="0.5" value="3">
+          </label>
+          <label>Importância
+            <input type="number" id="examImportance" min="1" max="5" step="0.1" value="1">
+          </label>
+        </div>
+        <label>Tópicos (Área::Subárea)
+          <textarea id="examTopics" rows="3" placeholder="Uma linha por tópico. Opcional: peso e confundíveis. Ex.:\nCLINICA::IC|1|CLINICA::CARDIO"></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="fecharNovaProva()">Cancelar</button>
+          <button type="button" class="btn btn-primary" onclick="salvarNovaProva()">Salvar prova</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="assignGuideModal" class="modal" aria-hidden="true">
+    <div class="modal-content">
+      <header class="modal-header">
+        <h3>Atribuir bloco ao exame</h3>
+        <button class="btn-icon" onclick="dismissAssignModal()" aria-label="Fechar">✕</button>
+      </header>
+      <p class="helper-text">Deseja vincular este conteúdo ao plano de qual prova?</p>
+      <div id="assignExamList" class="assign-list"></div>
+      <label class="modal-checkbox">
+        <input type="checkbox" id="assignDontAskAgain">
+        Não perguntar novamente neste dispositivo
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="dismissAssignModal()">Agora não</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ========================================================================
     // GLOBAL STATE
@@ -2851,6 +3269,29 @@
       plan: null
     };
     let studyGuideChecklistState = loadStudyGuideChecklistState();
+    let examsState = {
+      list: [],
+      selectedId: null,
+      plan: null,
+      sessions: [],
+      reviews: []
+    };
+    let examTimerState = {
+      sessionId: null,
+      totalSeconds: 1500,
+      remainingSeconds: 1500,
+      running: false,
+      intervalId: null,
+      cycles: 1,
+      pomodoros: 0
+    };
+    const TECHNIQUE_TIPS = {
+      'QUESTOES': 'Responda sem consultar; corrija; anote 1 linha do erro; refaça nas revisões.',
+      'FLASHCARDS': 'Errou? revise hoje e +1d. Acertou fácil? vá para revisão longa (+3/+7/+14).',
+      'VOZ_ALTA': 'Explique em 2–3 min como se fosse ensinar; se travar, vira revisão de amanhã.',
+      'ERRADAS': 'Leia só o erro; escreva 3 bullets: alerta, ponto de corte, dose/conduta.',
+      'SIMULADO': 'Cronômetro real; marque dúvidas; depois foque nas erradas (não releia tudo).'
+    };
 
     const alvoDatalist = document.getElementById('alvoSuggestions');
     const areaDatalist = document.getElementById('areaSuggestions');
@@ -2942,6 +3383,9 @@
       }
       if (pageId === 'guiaEstudo') {
         loadStudyGuidePage();
+      }
+      if (pageId === 'provas') {
+        carregarProvas();
       }
       // REMOVER O AUTO-LOAD DE REVISÕES
       // if (pageId === 'revisoes') gerarFilaHoje();
@@ -3312,6 +3756,10 @@
 
       if (statusEl) {
         statusEl.textContent = `Guia gerado para ${plan.alvo} (${statusLabel} · ${stageLabel}).`;
+      }
+
+      if (!silent) {
+        mostrarModalAtribuirSeNecessario(plan);
       }
 
       refreshStudyGuidePlannerSummary(plan.alvo);
@@ -5132,6 +5580,716 @@
       }
       refreshStudyGuidePlannerSummary();
     }
+
+    // ========================================================================
+    // PROVAS / EXAM PLANNER
+    // ========================================================================
+
+    function carregarProvas(force = false) {
+      const stored = localStorage.getItem('selectedExamId');
+      if (!force && examsState.list.length > 0) {
+        if (stored && !examsState.selectedId) {
+          const exists = examsState.list.some(exam => exam.id === stored);
+          if (exists) {
+            selecionarProva(stored, { skipFetch: false });
+          }
+        }
+        renderExamCards();
+        return;
+      }
+
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          setLoading(false);
+          if (!result || result.ok === false) {
+            toast('Não foi possível carregar as provas.', 'error');
+            return;
+          }
+          examsState.list = Array.isArray(result.exams) ? result.exams : [];
+          const selectedId = stored && examsState.list.some(exam => exam.id === stored)
+            ? stored
+            : (examsState.list[0] ? examsState.list[0].id : null);
+          examsState.selectedId = selectedId;
+          examsState.plan = null;
+          examsState.sessions = [];
+          examsState.reviews = [];
+          renderExamCards();
+          if (selectedId) {
+            selecionarProva(selectedId, { skipFetch: false, silent: true });
+          } else {
+            renderExamPlan(null);
+            renderExamSessionsTable();
+            renderExamReviewsTable();
+          }
+        })
+        .withFailureHandler(function(error) {
+          setLoading(false);
+          toast('Erro ao carregar provas: ' + error.message, 'error');
+        })
+        .apiGetExams();
+    }
+
+    function abrirNovaProva() {
+      const modal = document.getElementById('examModal');
+      if (!modal) return;
+      const form = document.getElementById('examForm');
+      if (form) {
+        form.reset();
+        document.getElementById('examHoursPerDay').value = '3';
+        document.getElementById('examImportance').value = '1';
+      }
+      modal.classList.add('active');
+      setTimeout(() => {
+        const input = document.getElementById('examTitle');
+        if (input) input.focus();
+      }, 50);
+    }
+
+    function fecharNovaProva() {
+      const modal = document.getElementById('examModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function parseExamTopicsInput(value) {
+      if (!value) return [];
+      const lines = value.split(/\n/).map(line => line.trim()).filter(Boolean);
+      return lines.map(line => {
+        const parts = line.split('|').map(part => part.trim());
+        const alvo = parts[0];
+        const weight = parts[1] !== undefined ? parseFloat(parts[1]) : 1;
+        const confusables = parts[2]
+          ? parts[2].split(/[,;]+/).map(item => item.trim()).filter(Boolean)
+          : [];
+        return {
+          alvo,
+          weight: isFinite(weight) && weight > 0 ? weight : 1,
+          confusables
+        };
+      }).filter(item => item.alvo);
+    }
+
+    function salvarNovaProva() {
+      const title = document.getElementById('examTitle').value.trim();
+      const dateTime = document.getElementById('examDateTime').value;
+      const hours = parseFloat(document.getElementById('examHoursPerDay').value);
+      const importance = parseFloat(document.getElementById('examImportance').value);
+      const topicsInput = document.getElementById('examTopics').value;
+
+      if (!title) {
+        toast('Informe o título da prova.', 'warning');
+        return;
+      }
+      if (!dateTime) {
+        toast('Informe a data da prova.', 'warning');
+        return;
+      }
+
+      const payload = {
+        title,
+        dateTime,
+        hoursPerDay: isFinite(hours) && hours > 0 ? hours : 3,
+        importance: isFinite(importance) && importance > 0 ? importance : 1,
+        topics: parseExamTopicsInput(topicsInput)
+      };
+
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          setLoading(false);
+          if (!result || result.ok === false) {
+            toast('Erro ao salvar prova: ' + (result && result.error ? result.error : ''), 'error');
+            return;
+          }
+          fecharNovaProva();
+          toast('Prova cadastrada!', 'success');
+          examsState.list.push(result.exam);
+          examsState.selectedId = result.exam.id;
+          localStorage.setItem('selectedExamId', examsState.selectedId);
+          renderExamCards();
+          selecionarProva(result.exam.id, { skipFetch: false, silent: true });
+        })
+        .withFailureHandler(function(error) {
+          setLoading(false);
+          toast('Erro ao salvar prova: ' + error.message, 'error');
+        })
+        .apiCreateExam(payload);
+    }
+
+    function renderExamCards() {
+      const container = document.getElementById('examCardsContainer');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (!Array.isArray(examsState.list) || examsState.list.length === 0) {
+        container.innerHTML = '<div class="empty-state">Nenhuma prova cadastrada. Clique em “Nova prova”.</div>';
+        return;
+      }
+
+      examsState.list.sort((a, b) => {
+        const dateA = parseAppDate(a.dateTime || a.dateLabel || '');
+        const dateB = parseAppDate(b.dateTime || b.dateLabel || '');
+        if (dateA && dateB) return dateA - dateB;
+        return (a.title || '').localeCompare(b.title || '', 'pt-BR');
+      });
+
+      examsState.list.forEach(exam => {
+        const card = document.createElement('div');
+        card.className = 'exam-card' + (exam.id === examsState.selectedId ? ' selected' : '');
+        card.addEventListener('click', function() {
+          selecionarProva(exam.id, { skipFetch: false });
+        });
+
+        const examDate = parseAppDate(exam.dateTime || exam.dateLabel || '');
+        const dateLabel = examDate
+          ? examDate.toLocaleString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : (exam.dateLabel || 'Sem data definida');
+        const topics = Array.isArray(exam.topics) ? exam.topics : [];
+        const topicLabel = topics.length === 0
+          ? 'Sem tópicos cadastrados'
+          : topics.slice(0, 3).map(t => t.alvo || '').filter(Boolean).join(', ');
+        const moreTopics = topics.length > 3 ? ` (+${topics.length - 3})` : '';
+
+        const metaChips = [];
+        if (exam.hoursPerDay) metaChips.push(`<span class="chip">${Number(exam.hoursPerDay).toFixed(1)} h/dia</span>`);
+        if (exam.importance) metaChips.push(`<span class="chip">Importância ${Number(exam.importance).toFixed(1)}</span>`);
+        if (exam.calendarEventId) metaChips.push('<span class="chip">Calendário vinculado</span>');
+
+        card.innerHTML = `
+          <h4>${exam.title}</h4>
+          <p class="helper-text">${dateLabel}</p>
+          <div class="exam-meta">${metaChips.join('')}</div>
+          <p class="helper-text">Tópicos: ${topicLabel || '—'}${moreTopics}</p>
+          <div class="exam-actions-row">
+            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); gerarPlanoProva('${exam.id}')">Gerar plano</button>
+            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); sincronizarCalendarioDireto('${exam.id}')">Calendário</button>
+            <button type="button" class="btn btn-secondary" onclick="event.stopPropagation(); verGuiaProva('${exam.id}')">Ver guia</button>
+          </div>
+        `;
+
+        container.appendChild(card);
+      });
+    }
+
+    function gerarPlanoProva(examId) {
+      selecionarProva(examId, { skipFetch: true });
+      gerarPlanoProvaSelecionada();
+    }
+
+    function sincronizarCalendarioDireto(examId) {
+      selecionarProva(examId, { skipFetch: true });
+      sincronizarCalendarioProva();
+    }
+
+    function selecionarProva(examId, options = {}) {
+      if (!examId) return;
+      examsState.selectedId = examId;
+      localStorage.setItem('selectedExamId', examId);
+      renderExamCards();
+      if (!options.silent) {
+        toast('Prova selecionada.', 'info');
+      }
+      renderExamPlan(examsState.plan && examsState.plan.examId === examId ? examsState.plan : null);
+      if (options.skipFetch) {
+        renderExamSessionsTable();
+        renderExamReviewsTable();
+        return;
+      }
+      carregarSessoesProva(examId);
+      carregarRevisoesProva(examId);
+      resetarTimerSessao({ preserveSelection: true });
+    }
+
+    function gerarPlanoProvaSelecionada() {
+      if (!examsState.selectedId) {
+        toast('Selecione uma prova primeiro.', 'warning');
+        return;
+      }
+      const exam = examsState.list.find(item => item.id === examsState.selectedId);
+      if (!exam) {
+        toast('Prova não encontrada.', 'error');
+        return;
+      }
+
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          setLoading(false);
+          if (!result || result.ok === false) {
+            toast('Erro ao gerar plano: ' + (result && result.error ? result.error : ''), 'error');
+            return;
+          }
+          examsState.plan = Object.assign({ examId: examsState.selectedId }, result.plan || {});
+          examsState.sessions = Array.isArray(result.plan && result.plan.sessions) ? result.plan.sessions : [];
+          examsState.reviews = Array.isArray(result.plan && result.plan.reviews) ? result.plan.reviews : [];
+          renderExamPlan(result.plan || null);
+          renderExamSessionsTable();
+          renderExamReviewsTable();
+          resetarTimerSessao();
+          toast('Plano gerado com sucesso!', 'success');
+        })
+        .withFailureHandler(function(error) {
+          setLoading(false);
+          toast('Erro ao gerar plano: ' + error.message, 'error');
+        })
+        .apiPlanExam({ examId: examsState.selectedId });
+    }
+
+    function renderExamPlan(plan) {
+      const titleEl = document.getElementById('examPlanTitle');
+      const helperEl = document.getElementById('examPlanHelper');
+      const totalEl = document.getElementById('examPlanTotal');
+      const deltaEl = document.getElementById('examPlanDelta');
+      const daysEl = document.getElementById('examPlanDays');
+      const chipsEl = document.getElementById('examPlanChips');
+      const exam = examsState.list.find(item => item.id === examsState.selectedId);
+
+      if (titleEl) {
+        titleEl.textContent = exam ? `Plano diário — ${exam.title}` : 'Plano diário';
+      }
+      if (!plan) {
+        if (helperEl) helperEl.textContent = examsState.selectedId ? 'Clique em “Gerar plano” para calcular o cronograma.' : 'Selecione uma prova para começar.';
+        if (totalEl) totalEl.textContent = '—';
+        if (deltaEl) deltaEl.textContent = '—';
+        if (daysEl) daysEl.textContent = '—';
+        if (chipsEl) chipsEl.innerHTML = '';
+        return;
+      }
+
+      if (helperEl) helperEl.textContent = 'Plano calculado. Use os passos abaixo para executar e acompanhar.';
+      const totalMinutes = plan.summary && isFinite(Number(plan.summary.totalMinutes)) ? Number(plan.summary.totalMinutes) : 0;
+      const totalDelta = plan.summary && isFinite(Number(plan.summary.totalDelta)) ? Number(plan.summary.totalDelta) : 0;
+      const days = isFinite(Number(plan.days)) ? Number(plan.days) : null;
+
+      if (totalEl) totalEl.textContent = totalMinutes > 0 ? `${totalMinutes.toFixed(0)} min/dia` : '—';
+      if (deltaEl) deltaEl.textContent = totalDelta > 0 ? `+${totalDelta.toFixed(1)} pp` : '—';
+      if (daysEl) daysEl.textContent = days !== null ? `${days} dia(s)` : '—';
+
+      if (chipsEl) {
+        chipsEl.innerHTML = '';
+        const areas = Array.isArray(plan.summary && plan.summary.areas) ? plan.summary.areas : [];
+        areas.forEach(area => {
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          chip.textContent = `${area.area || '—'}: ${Number(area.allocMin || 0).toFixed(0)} min (+${Number(area.deltaRpp || 0).toFixed(1)}%)`;
+          chipsEl.appendChild(chip);
+        });
+      }
+    }
+
+    function renderExamSessionsTable() {
+      const tableBody = document.querySelector('#examSessionsTable tbody');
+      if (!tableBody) return;
+      const sessions = examsState.sessions || [];
+      tableBody.innerHTML = '';
+
+      if (sessions.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhuma sessão gerada ainda.</td></tr>';
+        return;
+      }
+
+      sessions.sort((a, b) => {
+        const dateA = parseAppDate(a.day);
+        const dateB = parseAppDate(b.day);
+        if (dateA && dateB && dateA.getTime() !== dateB.getTime()) {
+          return dateA - dateB;
+        }
+        return (a.sequence || 0) - (b.sequence || 0);
+      });
+
+      sessions.forEach(session => {
+        const row = document.createElement('tr');
+        if (session.id === examTimerState.sessionId) {
+          row.classList.add('selected');
+        }
+        const dateLabel = session.day || '—';
+        const technique = session.technique || '—';
+        const topic = session.topic || '—';
+        const minutes = isFinite(Number(session.minutes)) ? Number(session.minutes) : 0;
+        const delta = isFinite(Number(session.deltaRpp)) ? Number(session.deltaRpp) : 0;
+        row.innerHTML = `
+          <td>${dateLabel}</td>
+          <td>${technique}</td>
+          <td>${topic}</td>
+          <td>${minutes.toFixed(0)}</td>
+          <td>${delta > 0 ? '+' + delta.toFixed(1) : '—'}</td>
+          <td><button type="button" class="btn btn-secondary btn-small" data-session="${session.id}">Selecionar</button></td>
+        `;
+        row.querySelector('button').addEventListener('click', function(evt) {
+          evt.stopPropagation();
+          selecionarSessao(session.id);
+        });
+        row.addEventListener('click', function() {
+          selecionarSessao(session.id);
+        });
+        tableBody.appendChild(row);
+      });
+    }
+
+    function selecionarSessao(sessionId) {
+      const session = (examsState.sessions || []).find(item => item.id === sessionId);
+      if (!session) return;
+      examTimerState.sessionId = sessionId;
+      examTimerState.totalSeconds = Math.max(60, Math.round((Number(session.minutes) || 25) * 60));
+      examTimerState.remainingSeconds = examTimerState.totalSeconds;
+      examTimerState.running = false;
+      examTimerState.cycles = 1;
+      examTimerState.pomodoros = 0;
+      if (examTimerState.intervalId) {
+        clearInterval(examTimerState.intervalId);
+        examTimerState.intervalId = null;
+      }
+      atualizarTimerDisplay();
+      const titleEl = document.getElementById('timerSessionTitle');
+      const infoEl = document.getElementById('timerSessionInfo');
+      if (titleEl) titleEl.textContent = `${session.technique || 'Sessão'} — ${session.topic || ''}`;
+      if (infoEl) infoEl.textContent = `${session.minutes || 25} min previstos · ΔR ${session.deltaRpp ? '+' + Number(session.deltaRpp).toFixed(1) + '%' : '—'}`;
+      document.querySelectorAll('#examSessionsTable tr').forEach(row => row.classList.remove('selected'));
+      const button = document.querySelector(`#examSessionsTable button[data-session='${sessionId}']`);
+      if (button && button.closest('tr')) {
+        button.closest('tr').classList.add('selected');
+      }
+      resetarTimerSessao({ preserveSelection: true });
+    }
+
+    function atualizarTimerDisplay() {
+      const display = document.getElementById('sessionTimerDisplay');
+      if (!display) return;
+      const minutes = Math.floor(examTimerState.remainingSeconds / 60);
+      const seconds = examTimerState.remainingSeconds % 60;
+      display.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      const cycleEl = document.getElementById('timerCycleInfo');
+      if (cycleEl) {
+        const pause = examTimerState.cycles % 4 === 0 ? 'Pausa longa 15-20 min' : 'Pausa curta 5 min';
+        cycleEl.textContent = `Ciclo ${examTimerState.cycles} · ${pause}`;
+      }
+    }
+
+    function iniciarTimerSessao() {
+      if (!examTimerState.sessionId) {
+        toast('Selecione uma sessão primeiro.', 'warning');
+        return;
+      }
+      if (examTimerState.running) return;
+      examTimerState.running = true;
+      if (!examTimerState.intervalId) {
+        examTimerState.intervalId = setInterval(tickTimer, 1000);
+      }
+    }
+
+    function pausarTimerSessao() {
+      examTimerState.running = false;
+    }
+
+    function resetarTimerSessao(options = {}) {
+      const session = (examsState.sessions || []).find(item => item.id === examTimerState.sessionId);
+      const baseMinutes = session ? Number(session.minutes) : 25;
+      examTimerState.totalSeconds = Math.max(60, Math.round(baseMinutes * 60));
+      examTimerState.remainingSeconds = examTimerState.totalSeconds;
+      examTimerState.running = false;
+      examTimerState.cycles = 1;
+      examTimerState.pomodoros = 0;
+      if (examTimerState.intervalId) {
+        clearInterval(examTimerState.intervalId);
+        examTimerState.intervalId = null;
+      }
+      if (!options.preserveSelection) {
+        examTimerState.sessionId = null;
+        const titleEl = document.getElementById('timerSessionTitle');
+        const infoEl = document.getElementById('timerSessionInfo');
+        if (titleEl) titleEl.textContent = 'Sessão atual';
+        if (infoEl) infoEl.textContent = 'Selecione uma sessão na tabela acima para iniciar.';
+      }
+      atualizarTimerDisplay();
+    }
+
+    function tickTimer() {
+      if (!examTimerState.running) return;
+      examTimerState.remainingSeconds -= 1;
+      if (examTimerState.remainingSeconds <= 0) {
+        examTimerState.pomodoros += 1;
+        examTimerState.cycles += 1;
+        examTimerState.running = false;
+        examTimerState.remainingSeconds = examTimerState.totalSeconds;
+        if (examTimerState.intervalId) {
+          clearInterval(examTimerState.intervalId);
+          examTimerState.intervalId = null;
+        }
+        atualizarTimerDisplay();
+        const breakDuration = examTimerState.cycles % 4 === 0 ? 'Faça uma pausa longa de 15–20 minutos.' : 'Faça uma pausa curta de 5 minutos.';
+        toast('Pomodoro concluído! ' + breakDuration, 'success');
+        return;
+      }
+      atualizarTimerDisplay();
+    }
+
+    function registrarSessaoEstudo() {
+      if (!examsState.selectedId || !examTimerState.sessionId) {
+        toast('Selecione uma sessão e uma prova.', 'warning');
+        return;
+      }
+      const accuracyInput = document.getElementById('sessionAccuracy').value;
+      const difficultyInput = document.getElementById('sessionDifficulty').value;
+      const notesInput = document.getElementById('sessionNotes').value;
+
+      const payload = {
+        examId: examsState.selectedId,
+        id: examTimerState.sessionId,
+        status: 'done',
+        accuracy: accuracyInput !== '' ? Number(accuracyInput) : null,
+        difficulty: difficultyInput !== '' ? Number(difficultyInput) : null,
+        notes: notesInput
+      };
+
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          setLoading(false);
+        if (!result || result.ok === false) {
+          toast('Erro ao registrar sessão: ' + (result && result.error ? result.error : ''), 'error');
+          return;
+        }
+        toast('Sessão registrada!', 'success');
+          carregarSessoesProva(examsState.selectedId);
+          carregarRevisoesProva(examsState.selectedId);
+          document.getElementById('sessionFeedbackForm').reset();
+        })
+        .withFailureHandler(function(error) {
+          setLoading(false);
+          toast('Erro ao registrar sessão: ' + error.message, 'error');
+        })
+        .apiUpdateSession(payload);
+    }
+
+    function mostrarDicaTecnica() {
+      if (!examTimerState.sessionId) {
+        toast('Selecione uma sessão para ver a dica.', 'info');
+        return;
+      }
+      const session = (examsState.sessions || []).find(item => item.id === examTimerState.sessionId);
+      const tip = session && TECHNIQUE_TIPS[session.technique] ? TECHNIQUE_TIPS[session.technique] : 'Avance com foco na recuperação ativa do conteúdo.';
+      toast(tip, 'info');
+    }
+
+    function carregarSessoesProva(examId) {
+      if (!examId) return;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || result.ok === false) {
+            examsState.sessions = [];
+            renderExamSessionsTable();
+            return;
+          }
+          examsState.sessions = Array.isArray(result.sessions) ? result.sessions : [];
+          renderExamSessionsTable();
+        })
+        .withFailureHandler(function() {
+          examsState.sessions = [];
+          renderExamSessionsTable();
+        })
+        .apiGetSessions({ examId });
+    }
+
+    function carregarRevisoesProva(examId) {
+      if (!examId) return;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || result.ok === false) {
+            examsState.reviews = [];
+            renderExamReviewsTable();
+            return;
+          }
+          examsState.reviews = Array.isArray(result.reviews) ? result.reviews : [];
+          renderExamReviewsTable();
+        })
+        .withFailureHandler(function() {
+          examsState.reviews = [];
+          renderExamReviewsTable();
+        })
+        .apiGetReviews({ examId });
+    }
+
+    function renderExamReviewsTable() {
+      const tbody = document.querySelector('#examReviewsTable tbody');
+      const statusEl = document.getElementById('examCalendarStatus');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+      const reviews = examsState.reviews || [];
+      if (reviews.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Nenhuma revisão prevista.</td></tr>';
+        if (statusEl) statusEl.textContent = 'Conecte o plano ao seu calendário para notificações.';
+        return;
+      }
+
+      reviews.sort((a, b) => {
+        const dateA = parseAppDate(a.day);
+        const dateB = parseAppDate(b.day);
+        if (dateA && dateB) return dateA - dateB;
+        return (a.gap || 0) - (b.gap || 0);
+      });
+
+      reviews.forEach(review => {
+        const row = document.createElement('tr');
+        const date = review.day || '—';
+        const source = review.sourceSessionId || 'Sessão';
+        const minutes = isFinite(Number(review.minutes)) ? Number(review.minutes) : 0;
+        const gap = review.gap !== undefined ? review.gap : '—';
+        const status = review.status || 'pending';
+        row.innerHTML = `
+          <td>${date}</td>
+          <td>${source}</td>
+          <td>${minutes.toFixed(0)}</td>
+          <td>${gap}</td>
+          <td>${status}</td>
+          <td><button type="button" class="btn btn-secondary btn-small" data-review="${review.id}">${status === 'done' ? 'Desfazer' : 'Concluir'}</button></td>
+        `;
+        row.querySelector('button').addEventListener('click', function(evt) {
+          evt.stopPropagation();
+          alternarStatusRevisao(review.id, status === 'done' ? 'pending' : 'done');
+        });
+        tbody.appendChild(row);
+      });
+    }
+
+    function alternarStatusRevisao(reviewId, status) {
+      if (!examsState.selectedId || !reviewId) return;
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!result || result.ok === false) {
+            toast('Erro ao atualizar revisão: ' + (result && result.error ? result.error : ''), 'error');
+            return;
+          }
+          toast('Revisão atualizada!', 'success');
+          carregarRevisoesProva(examsState.selectedId);
+        })
+        .withFailureHandler(function(error) {
+          toast('Erro ao atualizar revisão: ' + error.message, 'error');
+        })
+        .apiUpdateReview({ examId: examsState.selectedId, id: reviewId, status });
+    }
+
+    function sincronizarCalendarioProva() {
+      if (!examsState.selectedId) {
+        toast('Selecione uma prova para sincronizar com o calendário.', 'warning');
+        return;
+      }
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          setLoading(false);
+          if (!result || result.ok === false) {
+            toast('Erro ao sincronizar calendário: ' + (result && result.error ? result.error : ''), 'error');
+            return;
+          }
+          toast('Evento criado no calendário!', 'success');
+          const exam = examsState.list.find(item => item.id === examsState.selectedId);
+          if (exam) {
+            exam.calendarEventId = result.exam ? result.exam.calendarEventId : 'sync';
+          }
+          atualizarExamCalendarStatus('Calendário sincronizado com sucesso.');
+          renderExamCards();
+        })
+        .withFailureHandler(function(error) {
+          setLoading(false);
+          toast('Erro ao sincronizar calendário: ' + error.message, 'error');
+        })
+        .apiSyncExamCalendar({ examId: examsState.selectedId });
+    }
+
+    function atualizarExamCalendarStatus(message) {
+      const statusEl = document.getElementById('examCalendarStatus');
+      if (statusEl) statusEl.textContent = message || 'Conecte o plano ao seu calendário para notificações.';
+    }
+
+    function verGuiaProva(examId) {
+      const exam = examsState.list.find(item => item.id === examId);
+      if (!exam) {
+        toast('Prova não encontrada.', 'error');
+        return;
+      }
+      const firstTopic = exam.topics && exam.topics.length > 0 ? (exam.topics[0].alvo || '') : '';
+      if (firstTopic) {
+        const alvoInput = document.getElementById('studyGuideAlvo');
+        if (alvoInput) alvoInput.value = firstTopic;
+      }
+      switchPage('guiaEstudo');
+      if (firstTopic) {
+        toast(`Conteúdo ${firstTopic} carregado no Guia de Estudo.`, 'info');
+      }
+    }
+
+    function abrirAssignModal() {
+      const modal = document.getElementById('assignGuideModal');
+      if (!modal) return;
+      renderAssignModal();
+      const checkbox = document.getElementById('assignDontAskAgain');
+      if (checkbox) checkbox.checked = false;
+      modal.classList.add('active');
+    }
+
+    function fecharAssignModal() {
+      const modal = document.getElementById('assignGuideModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function dismissAssignModal() {
+      const checkbox = document.getElementById('assignDontAskAgain');
+      if (checkbox && checkbox.checked) {
+        localStorage.setItem('dismissAssignPrompt', '1');
+      }
+      fecharAssignModal();
+    }
+
+    function renderAssignModal() {
+      const container = document.getElementById('assignExamList');
+      if (!container) return;
+      container.innerHTML = '';
+      if (!Array.isArray(examsState.list) || examsState.list.length === 0) {
+        container.innerHTML = '<div class="empty-state">Cadastre uma prova na aba Provas.</div>';
+        return;
+      }
+      examsState.list.forEach(exam => {
+        const item = document.createElement('div');
+        item.className = 'assign-item';
+        const dateLabel = parseAppDate(exam.dateTime || exam.dateLabel || '')
+          ? parseAppDate(exam.dateTime || exam.dateLabel || '').toLocaleDateString('pt-BR')
+          : (exam.dateLabel || 'Sem data');
+        item.innerHTML = `<div><strong>${exam.title}</strong><p class="helper-text">${dateLabel}</p></div>`;
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-secondary';
+        btn.textContent = 'Atribuir';
+        btn.addEventListener('click', function() {
+          atribuirConteudoAProva(exam.id);
+        });
+        item.appendChild(btn);
+        container.appendChild(item);
+      });
+    }
+
+    function atribuirConteudoAProva(examId) {
+      if (!examId || !studyGuideState.plan || !studyGuideState.plan.alvo) {
+        toast('Gere um guia de estudo antes de atribuir.', 'warning');
+        return;
+      }
+      const checkbox = document.getElementById('assignDontAskAgain');
+      if (checkbox && checkbox.checked) {
+        localStorage.setItem('dismissAssignPrompt', '1');
+      }
+      fecharAssignModal();
+      selecionarProva(examId, { skipFetch: true, silent: true });
+      toast('Conteúdo atribuído à prova. Ajuste os tópicos manualmente se desejar.', 'success');
+    }
+
+    function mostrarModalAtribuirSeNecessario(plan) {
+      if (!plan || !plan.alvo) return;
+      if (!Array.isArray(examsState.list) || examsState.list.length === 0) return;
+      if (toBool(localStorage.getItem('dismissAssignPrompt'))) return;
+      abrirAssignModal();
+    }
+
+    // ========================================================================
+    // PLANO SEMANAL
+    // ========================================================================
 
     function calcularPlanoSemanal() {
       const enabled = toBool((currentSettings || {}).useBanditPlanner);
