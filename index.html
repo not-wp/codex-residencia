@@ -1726,6 +1726,13 @@
       flex: 1 1 auto;
     }
 
+    .daily-task-list .task-reason {
+      flex: 1 1 100%;
+      font-size: 0.78rem;
+      color: var(--text-secondary);
+      opacity: 0.85;
+    }
+
     .daily-task-list .task-delta {
       min-width: 72px;
       text-align: right;
@@ -6302,6 +6309,12 @@
                 item.appendChild(techSpan);
                 item.appendChild(detailSpan);
                 item.appendChild(deltaSpan);
+                if (task.reason) {
+                  const reasonSpan = document.createElement('span');
+                  reasonSpan.className = 'task-reason';
+                  reasonSpan.textContent = task.reason;
+                  item.appendChild(reasonSpan);
+                }
                 taskList.appendChild(item);
               });
             }

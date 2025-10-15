@@ -703,6 +703,9 @@ function buildExamStudyPlan(exam, options, settings) {
     }
   });
   let totalDeltaRaw = 0;
+  const lastStudyIndex = daysUntil > 0 ? Math.max(0, daysUntil - 1) : 0;
+  const hasDedicatedReviewDay = daysUntil > 0;
+  const loopEndIndex = hasDedicatedReviewDay ? lastStudyIndex : daysUntil;
 
   const ensureDayEntry = (date, dayIndex) => {
     const key = formatDateDDMMYYYY(date);
@@ -747,12 +750,290 @@ function buildExamStudyPlan(exam, options, settings) {
       minutes: Math.round(Math.max(0, safeMinutes)),
       notes: taskMeta && taskMeta.notes ? taskMeta.notes : '',
       mode: taskMeta && taskMeta.mode ? taskMeta.mode : '',
-      deltaRpp: Math.max(0, Math.round(safeDelta * 10) / 10)
+      deltaRpp: Math.max(0, Math.round(safeDelta * 10) / 10),
+      reason: taskMeta && taskMeta.reason ? taskMeta.reason : ''
     });
     topicEntry.totalMinutesRaw += safeMinutes;
     topicEntry.totalDeltaRaw += Math.max(0, safeDelta);
     entry.totalMinutesRaw += safeMinutes;
     entry.totalDeltaRaw += Math.max(0, safeDelta);
+  };
+
+  const deriveTaskReason = (technique, status, stage, diagnostics, context) => {
+    const diag = diagnostics || {};
+    const recall = isFinite(diag.Rhoje) ? Number(diag.Rhoje) : null;
+    const accuracy = isFinite(diag.acerto_28d) ? Number(diag.acerto_28d) : null;
+    const difficulty = isFinite(diag.difMedia) ? Number(diag.difMedia) : null;
+    const eff = isFinite(diag.n_eff) ? Number(diag.n_eff) : null;
+    const stageLabel = stage || (status === 'NOVO' ? 'D1' : 'S2');
+    const finalReview = context && context.finalReview;
+
+    if (finalReview) {
+      if (technique === 'FLASHCARDS') {
+        return 'Véspera da prova: reativar flashcards para consolidar lembrança recente.';
+      }
+      if (technique === 'ERRADAS') {
+        return 'Revisar anotações de erro para chegar à prova sem dúvidas recorrentes.';
+      }
+      if (technique === 'QUESTOES') {
+        return 'Sprint final de questões para reforçar tomada de decisão antes da prova.';
+      }
+      return 'Ajuste final voltado a revisão leve na véspera da prova.';
+    }
+
+    if (status === 'NOVO' || stageLabel === 'D1') {
+      if (technique === 'LEITURA') {
+        return 'Conteúdo novo: leitura ativa cria a base conceitual antes da prática.';
+      }
+      if (technique === 'FLASHCARDS') {
+        return 'Criar cards conceituais para transformar a leitura em memorização imediata.';
+      }
+      if (technique === 'QUESTOES') {
+        return 'Questões no D1 conectam teoria e aplicação, acelerando a curva de esquecimento.';
+      }
+    }
+
+    if (stageLabel === 'S1') {
+      if (technique === 'FLASHCARDS') {
+        return 'Recém-aprendido: revisar cards para evitar queda de recall nos primeiros dias.';
+      }
+      if (technique === 'QUESTOES') {
+        return 'Mais questões logo após o D1 para fortalecer lacunas identificadas.';
+      }
+    }
+
+    if (stageLabel === 'S2') {
+      if (technique === 'FLASHCARDS') {
+        return 'Conteúdo em consolidação: flashcards mantêm espaçamento ativo sem custar muito tempo.';
+      }
+      if (technique === 'QUESTOES') {
+        return 'Questões de consolidação equilibram dificuldade e ganho por minuto nesta fase.';
+      }
+      if (technique === 'ERRADAS') {
+        return 'Revisar erros recentes impede acúmulo de lapses durante a consolidação.';
+      }
+    }
+
+    if (stageLabel === 'S3') {
+      if (technique === 'FLASHCARDS') {
+        return 'Estabilidade alta: flashcards curtos mantêm o traço ativo com baixo esforço.';
+      }
+      if (technique === 'QUESTOES') {
+        return 'Questões de manutenção simulam prova e evitam acomodação excessiva.';
+      }
+    }
+
+    if (technique === 'SIMULADO') {
+      return 'Simulado programado para medir preparo completo e calibrar revisões seguintes.';
+    }
+
+    if (technique === 'ERRADAS') {
+      return 'Revisar erros aumenta sensibilidade aos pontos críticos antes da prova.';
+    }
+
+    if (technique === 'FLASHCARDS' && recall !== null && recall < 0.6) {
+      return 'Recall baixo detectado: flashcards reforçam o alvo antes da próxima tentativa.';
+    }
+
+    if (technique === 'QUESTOES' && accuracy !== null && accuracy < 0.7) {
+      return 'Acerto recente abaixo da meta: mais questões ajudam a recuperar confiança.';
+    }
+
+    if (technique === 'FLASHCARDS' && accuracy !== null && accuracy > 0.85) {
+      return 'Acerto alto: flashcards curtos mantêm ritmo sem desgaste excessivo.';
+    }
+
+    if (eff !== null && eff < 5 && technique === 'FLASHCARDS') {
+      return 'Poucos registros anteriores: flashcards evitam lapses enquanto aumenta o histórico.';
+    }
+
+    if (difficulty !== null && difficulty >= 4 && technique === 'QUESTOES') {
+      return 'Dificuldade elevada: questões guiadas calibram tempo de resposta sob pressão.';
+    }
+
+    return 'Distribuição padrão para manter progresso equilibrado neste estágio.';
+  };
+
+  const scheduleFinalReviewDay = (dayEntry, currentDate, dayIndex) => {
+    const reviewTopics = topics.filter(topic => topic && topic.alvo);
+    if (reviewTopics.length === 0) {
+      return;
+    }
+
+    const weights = reviewTopics.map(topic => {
+      const base = Math.max(0.5, Number(topic.weight) || 1);
+      const state = topicState.get(topic.alvo);
+      const sessions = state && isFinite(state.sessions) ? state.sessions : 0;
+      const minutes = state && isFinite(state.minutes) ? state.minutes : 0;
+      const freshness = sessions <= 0 ? 3 : Math.max(1, 1 / Math.max(1, minutes / 30));
+      return base * freshness;
+    });
+    const totalWeight = weights.reduce((sum, w) => sum + w, 0) || reviewTopics.length;
+
+    const useFineGrain = baseMinutes < reviewTopics.length * 5;
+    let allocations = reviewTopics.map((topic, idx) => {
+      const weight = weights[idx] || (totalWeight / reviewTopics.length);
+      const raw = (baseMinutes * weight) / totalWeight;
+      if (useFineGrain) {
+        return Math.max(1, Math.round(raw));
+      }
+      const perTopicBaseline = Math.max(5, Math.round((baseMinutes / Math.max(1, reviewTopics.length)) / 5) * 5);
+      return Math.max(perTopicBaseline, Math.round(raw / 5) * 5);
+    });
+
+    const adjustStep = useFineGrain ? 1 : 5;
+    let totalAlloc = allocations.reduce((sum, value) => sum + value, 0);
+    if (totalAlloc > baseMinutes) {
+      const order = allocations.map((value, idx) => ({ idx, value })).sort((a, b) => b.value - a.value);
+      let pointer = 0;
+      while (totalAlloc > baseMinutes && pointer < order.length * 3) {
+        const target = order[pointer % order.length];
+        if (allocations[target.idx] > adjustStep) {
+          allocations[target.idx] = Math.max(adjustStep, allocations[target.idx] - adjustStep);
+          totalAlloc -= adjustStep;
+        }
+        pointer += 1;
+      }
+    } else if (totalAlloc < baseMinutes && allocations.length > 0) {
+      const order = weights.map((weight, idx) => ({ idx, weight })).sort((a, b) => b.weight - a.weight);
+      let pointer = 0;
+      while (totalAlloc < baseMinutes && pointer < order.length * 5) {
+        const target = order[pointer % order.length];
+        const remaining = baseMinutes - totalAlloc;
+        const increment = Math.min(adjustStep, remaining);
+        allocations[target.idx] += increment;
+        totalAlloc += increment;
+        pointer += 1;
+      }
+    }
+
+    allocations = allocations.map(value => {
+      if (useFineGrain) {
+        return Math.max(1, Math.min(value, baseMinutes));
+      }
+      return Math.max(5, Math.min(value, baseMinutes));
+    });
+
+    reviewTopics.forEach((topic, idx) => {
+      let minutes = allocations[idx] || 0;
+      if (minutes <= 0) {
+        return;
+      }
+
+      const gain = estimateSessionGain(topic.alvo, minutes, settings, dataCache, logRows, revisaoRows, examConfig, today, gainCache);
+      const plan = gain && gain.plan ? gain.plan : null;
+      const diagnostics = plan && plan.diagnostics ? plan.diagnostics : null;
+      const statusGuide = plan && plan.status ? plan.status : 'HISTORICO';
+      const stageGuide = plan && plan.stage ? plan.stage : ((topicState.get(topic.alvo) && topicState.get(topic.alvo).sessions > 0) ? 'S2' : 'S1');
+      const totalDelta = Math.max(0, gain && gain.deltaRpp ? gain.deltaRpp : 0);
+      let reviewMinutes = Math.max(10, Math.round(minutes * 0.6));
+      if (reviewMinutes > minutes - 5) {
+        reviewMinutes = Math.max(10, minutes - 5);
+      }
+      if (reviewMinutes < 10) {
+        reviewMinutes = Math.min(minutes, 10);
+      }
+      let practiceMinutes = Math.max(0, minutes - reviewMinutes);
+      if (practiceMinutes > 0 && practiceMinutes < 5) {
+        practiceMinutes = 5;
+        reviewMinutes = Math.max(5, minutes - practiceMinutes);
+      }
+      if (reviewMinutes + practiceMinutes > minutes) {
+        reviewMinutes = minutes - practiceMinutes;
+      }
+      const reviewDelta = totalDelta * (reviewMinutes / Math.max(minutes, 1));
+      const practiceDelta = Math.max(0, totalDelta - reviewDelta);
+
+      const parts = parseAlvoParts(topic.alvo || '');
+      const areaLabel = parts.area || 'Geral';
+      if (!areaSummary[areaLabel]) {
+        areaSummary[areaLabel] = { allocMin: 0, deltaRaw: 0 };
+      }
+
+      if (reviewMinutes > 0) {
+        areaSummary[areaLabel].allocMin += reviewMinutes;
+        areaSummary[areaLabel].deltaRaw += Math.max(0, reviewDelta);
+        totalDeltaRaw += Math.max(0, reviewDelta);
+        const reason = deriveTaskReason('FLASHCARDS', statusGuide, stageGuide, diagnostics, { finalReview: true });
+        addTaskToDay(dayEntry, topic, reviewMinutes, reviewDelta, {
+          technique: 'FLASHCARDS',
+          notes: 'Revisão véspera (cards + erros)',
+          mode: 'maintenance',
+          stage: stageGuide || 'Revisão final',
+          status: statusGuide,
+          area: parts.area || '',
+          topicLabel: topic.alvo || '',
+          topicKey: topic.alvo || '',
+          reason
+        });
+        sessions.push({
+          id: generateRowId('sess'),
+          examId: exam.id,
+          day: formatDateDDMMYYYY(currentDate),
+          sequence: dayIndex * 100 + 90 + idx * 2,
+          start: '',
+          end: '',
+          minutes: reviewMinutes,
+          technique: 'FLASHCARDS',
+          mode: 'maintenance',
+          topic: topic.alvo,
+          confusableWith: Array.isArray(topic.confusables) ? topic.confusables.join(', ') : '',
+          pomodoroType: '25-5',
+          status: 'pending',
+          accuracy: '',
+          difficulty: '',
+          notes: `Revisão final · ${reason}`,
+          createdAt: formatDateTimeISO(new Date()),
+          updatedAt: formatDateTimeISO(new Date()),
+          deltaRpp: Math.max(0, Math.round(reviewDelta * 10) / 10)
+        });
+      }
+
+      if (practiceMinutes > 0) {
+        areaSummary[areaLabel].allocMin += practiceMinutes;
+        areaSummary[areaLabel].deltaRaw += Math.max(0, practiceDelta);
+        totalDeltaRaw += Math.max(0, practiceDelta);
+        const reason = deriveTaskReason('QUESTOES', statusGuide, stageGuide, diagnostics, { finalReview: true });
+        addTaskToDay(dayEntry, topic, practiceMinutes, practiceDelta, {
+          technique: 'QUESTOES',
+          notes: 'Sprint final de questões',
+          mode: 'power',
+          stage: stageGuide || 'Revisão final',
+          status: statusGuide,
+          area: parts.area || '',
+          topicLabel: topic.alvo || '',
+          topicKey: topic.alvo || '',
+          reason
+        });
+        sessions.push({
+          id: generateRowId('sess'),
+          examId: exam.id,
+          day: formatDateDDMMYYYY(currentDate),
+          sequence: dayIndex * 100 + 91 + idx * 2,
+          start: '',
+          end: '',
+          minutes: practiceMinutes,
+          technique: 'QUESTOES',
+          mode: 'power',
+          topic: topic.alvo,
+          confusableWith: Array.isArray(topic.confusables) ? topic.confusables.join(', ') : '',
+          pomodoroType: '25-5',
+          status: 'pending',
+          accuracy: '',
+          difficulty: '',
+          notes: `Sprint final · ${reason}`,
+          createdAt: formatDateTimeISO(new Date()),
+          updatedAt: formatDateTimeISO(new Date()),
+          deltaRpp: Math.max(0, Math.round(practiceDelta * 10) / 10)
+        });
+      }
+
+      const state = topicState.get(topic.alvo) || { sessions: 0, minutes: 0, lastDay: -Infinity };
+      state.sessions = (state.sessions || 0) + 1;
+      state.minutes = (state.minutes || 0) + minutes;
+      state.lastDay = dayIndex;
+      topicState.set(topic.alvo, state);
+    });
   };
 
   const scheduleSessionsForTopic = (topic, baseMinutes, gainResult, context) => {
@@ -765,6 +1046,7 @@ function buildExamStudyPlan(exam, options, settings) {
     const todayPlan = planGuide && planGuide.planToday ? planGuide.planToday : null;
     const statusGuide = planGuide && planGuide.status ? planGuide.status : null;
     const stageGuide = planGuide && planGuide.stage ? planGuide.stage : null;
+    const diagnostics = planGuide && planGuide.diagnostics ? planGuide.diagnostics : null;
     const tasks = [];
 
     if (todayPlan) {
@@ -775,7 +1057,8 @@ function buildExamStudyPlan(exam, options, settings) {
             rawMinutes: todayPlan.readMin,
             mode: 'power',
             notes: 'Leitura ativa do conteúdo',
-            scheduleReviews: false
+            scheduleReviews: false,
+            reason: deriveTaskReason('LEITURA', statusGuide, stageGuide, diagnostics)
           });
         }
         if (todayPlan.flashcardsCreateMin > 0) {
@@ -785,7 +1068,8 @@ function buildExamStudyPlan(exam, options, settings) {
             rawMinutes: todayPlan.flashcardsCreateMin,
             mode: 'power',
             notes: cards > 0 ? `Criar ${cards} cards conceituais` : 'Criar cards conceituais',
-            scheduleReviews: false
+            scheduleReviews: false,
+            reason: deriveTaskReason('FLASHCARDS', statusGuide, stageGuide, diagnostics)
           });
         }
         if (todayPlan.questionsEstMin > 0) {
@@ -795,7 +1079,8 @@ function buildExamStudyPlan(exam, options, settings) {
             rawMinutes: todayPlan.questionsEstMin,
             mode: 'power',
             notes: qCount > 0 ? `Bloco de ${qCount} questões iniciais` : 'Questões iniciais',
-            scheduleReviews: true
+            scheduleReviews: true,
+            reason: deriveTaskReason('QUESTOES', statusGuide, stageGuide, diagnostics)
           });
         }
       } else {
@@ -805,7 +1090,8 @@ function buildExamStudyPlan(exam, options, settings) {
             rawMinutes: todayPlan.flashcardsReviewMin,
             mode: 'maintenance',
             notes: 'Revisar flashcards existentes',
-            scheduleReviews: false
+            scheduleReviews: false,
+            reason: deriveTaskReason('FLASHCARDS', statusGuide || 'HISTORICO', stageGuide, diagnostics)
           });
         }
         if (todayPlan.flashcardsCreateMin > 0) {
@@ -815,7 +1101,8 @@ function buildExamStudyPlan(exam, options, settings) {
             rawMinutes: todayPlan.flashcardsCreateMin,
             mode: 'maintenance',
             notes: cards > 0 ? `Criar ${cards} cards de erro` : 'Criar cards de erro',
-            scheduleReviews: false
+            scheduleReviews: false,
+            reason: deriveTaskReason('ERRADAS', statusGuide || 'HISTORICO', stageGuide, diagnostics)
           });
         }
         if (todayPlan.questionsEstMin > 0) {
@@ -828,7 +1115,8 @@ function buildExamStudyPlan(exam, options, settings) {
             rawMinutes: todayPlan.questionsEstMin,
             mode: stageGuide === 'S3' ? 'maintenance' : 'power',
             notes: qCount > 0 ? `${helper} (${qCount})` : helper,
-            scheduleReviews: true
+            scheduleReviews: true,
+            reason: deriveTaskReason('QUESTOES', statusGuide || 'HISTORICO', stageGuide, diagnostics)
           });
         }
       }
@@ -840,7 +1128,8 @@ function buildExamStudyPlan(exam, options, settings) {
         rawMinutes: baseMinutes,
         mode: 'power',
         notes: 'Prática orientada',
-        scheduleReviews: true
+        scheduleReviews: true,
+        reason: deriveTaskReason('QUESTOES', statusGuide, stageGuide, diagnostics)
       });
     }
 
@@ -900,7 +1189,8 @@ function buildExamStudyPlan(exam, options, settings) {
         status: statusGuide || '',
         area: parts.area || '',
         topicLabel: topic.alvo || '',
-        topicKey: topic.alvo || ''
+        topicKey: topic.alvo || '',
+        reason: task.reason || deriveTaskReason(task.technique, statusGuide, stageGuide, diagnostics, context)
       });
 
       sessions.push({
@@ -919,7 +1209,7 @@ function buildExamStudyPlan(exam, options, settings) {
         status: 'pending',
         accuracy: '',
         difficulty: '',
-        notes: task.notes || '',
+        notes: task.reason ? `${task.notes || ''}${task.notes ? ' · ' : ''}${task.reason}` : (task.notes || ''),
         createdAt: formatDateTimeISO(new Date()),
         updatedAt: formatDateTimeISO(new Date()),
         deltaRpp: roundedDelta
@@ -952,7 +1242,7 @@ function buildExamStudyPlan(exam, options, settings) {
     if (topicStateMap && topic && topic.alvo) {
       const current = topicStateMap.get(topic.alvo) || { sessions: 0, minutes: 0, lastDay: -Infinity };
       current.sessions = (current.sessions || 0) + 1;
-      current.minutes = (current.minutes || 0) + Math.max(0, totalRawMinutes);
+      current.minutes = (current.minutes || 0) + Math.max(0, effectiveTotalMinutes);
       current.lastDay = dayIndexValue;
       topicStateMap.set(topic.alvo, current);
     }
@@ -960,18 +1250,26 @@ function buildExamStudyPlan(exam, options, settings) {
     return sequenceCounter;
   };
 
-  for (let dayIndex = 0; dayIndex <= daysUntil; dayIndex++) {
+  for (let dayIndex = 0; dayIndex <= loopEndIndex; dayIndex++) {
     const currentDate = new Date(today.getTime() + dayIndex * msPerDay);
     const dateLabel = formatDateDDMMYYYY(currentDate);
     let remainingMinutes = baseMinutes;
     let sequence = 1;
     const dayEntry = ensureDayEntry(currentDate, dayIndex);
+    const isFinalReviewDay = hasDedicatedReviewDay && dayIndex === lastStudyIndex;
+
+    if (isFinalReviewDay) {
+      scheduleFinalReviewDay(dayEntry, currentDate, dayIndex);
+      continue;
+    }
+
     const dayTopics = rotateTopicsForDay(topics, dayIndex);
     const effectiveTopics = dayTopics.length > 0 ? dayTopics : topics;
 
     let simMinutes = 0;
     if (regime.simuladoOffsets && regime.simuladoOffsets.indexOf(dayIndex) !== -1) {
-      simMinutes = dayIndex === daysUntil ? Math.min(remainingMinutes, 60) : Math.min(remainingMinutes, 90);
+      const simCap = dayIndex === lastStudyIndex ? 60 : 90;
+      simMinutes = Math.min(remainingMinutes, simCap);
       remainingMinutes = Math.max(0, remainingMinutes - simMinutes);
       if (simMinutes > 0) {
         const sessionId = generateRowId('sess');
@@ -979,6 +1277,7 @@ function buildExamStudyPlan(exam, options, settings) {
         const simTopic = effectiveTopics.length > 0
           ? effectiveTopics[dayIndex % effectiveTopics.length]
           : (topics[dayIndex % topicCount] || topics[0]);
+        const simReason = deriveTaskReason('SIMULADO', 'HISTORICO', 'S3', null);
         addTaskToDay(dayEntry, simTopic, simMinutes, deltaEstimate, {
           technique: 'SIMULADO',
           notes: 'Simulado completo',
@@ -986,7 +1285,8 @@ function buildExamStudyPlan(exam, options, settings) {
           stage: 'Simulado',
           status: '',
           topicLabel: simTopic && simTopic.alvo ? simTopic.alvo : 'Simulado',
-          area: simTopic && simTopic.area ? simTopic.area : ''
+          area: simTopic && simTopic.area ? simTopic.area : '',
+          reason: simReason
         });
         sessions.push({
           id: sessionId,
@@ -1004,7 +1304,7 @@ function buildExamStudyPlan(exam, options, settings) {
           status: 'pending',
           accuracy: '',
           difficulty: '',
-          notes: '',
+          notes: simReason ? `Simulado completo · ${simReason}` : '',
           createdAt: formatDateTimeISO(new Date()),
           updatedAt: formatDateTimeISO(new Date()),
           deltaRpp: Math.round(deltaEstimate * 10) / 10
@@ -1026,8 +1326,10 @@ function buildExamStudyPlan(exam, options, settings) {
       const state = topicState.get(topic.alvo);
       return !state || !isFinite(state.sessions) || state.sessions <= 0;
     }).length;
-    const daysLeft = Math.max(1, daysUntil - dayIndex + 1);
-    const mustScheduleToday = Math.max(0, unscheduledCount - Math.max(0, daysLeft - 1));
+    const nonFinalDaysAhead = hasDedicatedReviewDay
+      ? Math.max(0, lastStudyIndex - dayIndex - 1)
+      : Math.max(0, daysUntil - dayIndex);
+    const mustScheduleToday = Math.max(0, unscheduledCount - nonFinalDaysAhead);
 
     let recallSlots = recallMinutes > 0 ? Math.max(1, Math.round(recallMinutes / recallBlock)) : 0;
     const maxRecallSlots = effectiveMinutes > 0 ? Math.max(1, Math.ceil(effectiveMinutes / recallBlock)) : 0;
@@ -1041,8 +1343,9 @@ function buildExamStudyPlan(exam, options, settings) {
     reviewMinutes = Math.max(0, effectiveMinutes - recallMinutes);
 
     let reviewSlots = reviewMinutes > 0 ? Math.max(1, Math.round(reviewMinutes / reviewBlock)) : 0;
-    const recallAllocation = allocateTopicSlots(effectiveTopics, recallSlots, topicState, dayIndex, daysUntil);
-    const reviewAllocation = allocateTopicSlots(effectiveTopics, reviewSlots, topicState, dayIndex, daysUntil);
+    const horizonForAllocation = hasDedicatedReviewDay ? lastStudyIndex : daysUntil;
+    const recallAllocation = allocateTopicSlots(effectiveTopics, recallSlots, topicState, dayIndex, horizonForAllocation);
+    const reviewAllocation = allocateTopicSlots(effectiveTopics, reviewSlots, topicState, dayIndex, horizonForAllocation);
 
     const topicMinutesMap = new Map();
     const topicOrder = [];
@@ -1081,7 +1384,7 @@ function buildExamStudyPlan(exam, options, settings) {
         sequence,
         dailyEntry: dayEntry,
         topicState,
-        totalDays: daysUntil
+        totalDays: horizonForAllocation
       });
     });
   }
