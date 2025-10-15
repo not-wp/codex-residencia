@@ -500,11 +500,33 @@ function determineExamRegime(days) {
   };
 }
 
-function allocateTopicSlots(topics, totalSlots) {
+function allocateTopicSlots(topics, totalSlots, topicState, dayIndex, totalDays) {
   if (!Array.isArray(topics) || topics.length === 0 || !isFinite(totalSlots) || totalSlots <= 0) {
     return [];
   }
-  const weights = topics.map(topic => Math.max(0.5, Number(topic.weight) || 1));
+  const weights = topics.map(topic => {
+    const base = Math.max(0.5, Number(topic.weight) || 1);
+    if (!topicState || !topic || !topic.alvo) {
+      return base;
+    }
+    const state = topicState.get(topic.alvo);
+    const sessions = state && isFinite(state.sessions) ? state.sessions : 0;
+    const minutes = state && isFinite(state.minutes) ? state.minutes : 0;
+    const lastDay = state && isFinite(state.lastDay) ? state.lastDay : -Infinity;
+    const daysRemaining = isFinite(totalDays) ? Math.max(1, totalDays - dayIndex + 1) : 1;
+    if (sessions <= 0) {
+      const urgencyBoost = daysRemaining <= 2 ? 4 : (daysRemaining <= 4 ? 3 : 2);
+      return base * urgencyBoost;
+    }
+    let multiplier = 1 / Math.max(1, sessions);
+    if (minutes > 0) {
+      multiplier = Math.max(multiplier, 1 / Math.max(1, minutes / 25));
+    }
+    if (lastDay === dayIndex - 1) {
+      multiplier *= 0.6;
+    }
+    return base * multiplier;
+  });
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
   const baseCounts = topics.map(weight => Math.max(0, Math.round((totalSlots * weight) / Math.max(totalWeight, 1e-6))));
   let assigned = baseCounts.reduce((sum, count) => sum + count, 0);
@@ -553,12 +575,20 @@ function allocateTopicSlots(topics, totalSlots) {
       selected = preferred;
     }
     if (selected < 0) {
-      let bestCount = -1;
+      let bestScore = -Infinity;
       for (let i = 0; i < topics.length; i++) {
         if (counts[i] <= 0) continue;
         if (i === lastIdx && streak >= 2) continue;
-        if (counts[i] > bestCount) {
-          bestCount = counts[i];
+        let score = weights[i];
+        if (topicState && topics[i] && topics[i].alvo) {
+          const state = topicState.get(topics[i].alvo);
+          const sessions = state && isFinite(state.sessions) ? state.sessions : 0;
+          const daysRemaining = isFinite(totalDays) ? Math.max(1, totalDays - dayIndex + 1) : 1;
+          const urgency = sessions <= 0 ? (daysRemaining <= 2 ? 10 : 6) : (1 / Math.max(1, sessions));
+          score += urgency;
+        }
+        if (score > bestScore) {
+          bestScore = score;
           selected = i;
         }
       }
@@ -662,6 +692,16 @@ function buildExamStudyPlan(exam, options, settings) {
   const reviews = [];
   const areaSummary = {};
   const dailyPlans = new Map();
+  const topicState = new Map();
+  topics.forEach(topic => {
+    if (topic && topic.alvo) {
+      topicState.set(topic.alvo, {
+        sessions: 0,
+        minutes: 0,
+        lastDay: -Infinity
+      });
+    }
+  });
   let totalDeltaRaw = 0;
 
   const ensureDayEntry = (date, dayIndex) => {
@@ -720,6 +760,7 @@ function buildExamStudyPlan(exam, options, settings) {
     const dayIndexValue = context && isFinite(context.dayIndex) ? Number(context.dayIndex) : 0;
     let sequenceCounter = context && isFinite(context.sequence) ? Number(context.sequence) : 1;
     const dailyEntry = context && context.dailyEntry ? context.dailyEntry : null;
+    const topicStateMap = context && context.topicState instanceof Map ? context.topicState : null;
     const planGuide = gainResult && gainResult.plan ? gainResult.plan : null;
     const todayPlan = planGuide && planGuide.planToday ? planGuide.planToday : null;
     const statusGuide = planGuide && planGuide.status ? planGuide.status : null;
@@ -908,6 +949,14 @@ function buildExamStudyPlan(exam, options, settings) {
       }
     });
 
+    if (topicStateMap && topic && topic.alvo) {
+      const current = topicStateMap.get(topic.alvo) || { sessions: 0, minutes: 0, lastDay: -Infinity };
+      current.sessions = (current.sessions || 0) + 1;
+      current.minutes = (current.minutes || 0) + Math.max(0, totalRawMinutes);
+      current.lastDay = dayIndexValue;
+      topicStateMap.set(topic.alvo, current);
+    }
+
     return sequenceCounter;
   };
 
@@ -966,16 +1015,34 @@ function buildExamStudyPlan(exam, options, settings) {
     }
 
     const effectiveMinutes = remainingMinutes;
-    const recallMinutes = Math.max(0, Math.round(effectiveMinutes * regime.recallShare));
-    const reviewMinutes = Math.max(0, effectiveMinutes - recallMinutes);
+    let recallMinutes = Math.max(0, Math.round(effectiveMinutes * regime.recallShare));
+    let reviewMinutes = Math.max(0, effectiveMinutes - recallMinutes);
 
     const recallBlock = 25;
     const reviewBlock = 20;
-    const recallSlots = recallMinutes > 0 ? Math.max(1, Math.round(recallMinutes / recallBlock)) : 0;
-    const reviewSlots = reviewMinutes > 0 ? Math.max(1, Math.round(reviewMinutes / reviewBlock)) : 0;
 
-    const recallAllocation = allocateTopicSlots(effectiveTopics, recallSlots);
-    const reviewAllocation = allocateTopicSlots(effectiveTopics, reviewSlots);
+    const unscheduledCount = effectiveTopics.filter(topic => {
+      if (!topic || !topic.alvo) return false;
+      const state = topicState.get(topic.alvo);
+      return !state || !isFinite(state.sessions) || state.sessions <= 0;
+    }).length;
+    const daysLeft = Math.max(1, daysUntil - dayIndex + 1);
+    const mustScheduleToday = Math.max(0, unscheduledCount - Math.max(0, daysLeft - 1));
+
+    let recallSlots = recallMinutes > 0 ? Math.max(1, Math.round(recallMinutes / recallBlock)) : 0;
+    const maxRecallSlots = effectiveMinutes > 0 ? Math.max(1, Math.ceil(effectiveMinutes / recallBlock)) : 0;
+    if (mustScheduleToday > recallSlots) {
+      recallSlots = Math.min(Math.max(mustScheduleToday, recallSlots), maxRecallSlots);
+    } else {
+      recallSlots = Math.min(recallSlots, maxRecallSlots);
+    }
+
+    recallMinutes = Math.min(effectiveMinutes, recallSlots * recallBlock);
+    reviewMinutes = Math.max(0, effectiveMinutes - recallMinutes);
+
+    let reviewSlots = reviewMinutes > 0 ? Math.max(1, Math.round(reviewMinutes / reviewBlock)) : 0;
+    const recallAllocation = allocateTopicSlots(effectiveTopics, recallSlots, topicState, dayIndex, daysUntil);
+    const reviewAllocation = allocateTopicSlots(effectiveTopics, reviewSlots, topicState, dayIndex, daysUntil);
 
     const topicMinutesMap = new Map();
     const topicOrder = [];
@@ -1012,7 +1079,9 @@ function buildExamStudyPlan(exam, options, settings) {
         currentDate,
         dayIndex,
         sequence,
-        dailyEntry: dayEntry
+        dailyEntry: dayEntry,
+        topicState,
+        totalDays: daysUntil
       });
     });
   }
