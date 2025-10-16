@@ -513,6 +513,94 @@
       gap: 12px;
     }
 
+    .guide-summary {
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    .guide-targets,
+    .preexam-targets {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .guide-target,
+    .preexam-target {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(15, 23, 42, 0.3);
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .guide-target-header,
+    .preexam-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .guide-task-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.95rem;
+    }
+
+    .guide-task-list li,
+    .preexam-phases .phase-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .guide-diagnostics,
+    .guide-rationale {
+      margin-top: 8px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .preexam-summary {
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text-primary);
+    }
+
+    .preexam-phases {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.95rem;
+    }
+
+    .preexam-phases .phase-label {
+      font-weight: 600;
+      margin-right: 8px;
+    }
+
+    .info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent);
+      font-size: 0.75rem;
+      cursor: help;
+    }
+
     .plan-summary-header {
       display: flex;
       flex-wrap: wrap;
@@ -2888,6 +2976,28 @@
               <div id="examPlanChips" class="planner-chips"></div>
             </div>
 
+            <div class="card" id="examGuideTodayCard">
+              <div class="card-header-inline">
+                <h3>Plano detalhado de hoje</h3>
+                <button type="button" class="btn btn-secondary btn-small" onclick="atualizarExamGuide()">🔁 Atualizar guia</button>
+              </div>
+              <p class="helper-text" id="examGuideTodayHelper">Gere o plano para visualizar as tarefas por conteúdo e etapa.</p>
+              <div class="guide-summary" id="examGuideTodaySummary"></div>
+              <div id="examGuideTodayContent" class="guide-targets">
+                <div class="empty-state">Gere o plano para visualizar as tarefas do dia.</div>
+              </div>
+            </div>
+
+            <div class="card" id="preExamCard" style="display:none;">
+              <div class="card-header-inline">
+                <h3>Revisão Pré-Prova (D-1)</h3>
+                <span class="info-icon" id="preExamInfoIcon" title="Pri_preprova = 0.5·(1−Rhoje) + 0.3·(1−acerto_28d) + 0.2·(peso da área normalizado)">ⓘ</span>
+              </div>
+              <p class="helper-text" id="preExamHelper">Disponível na véspera da prova para direcionar revisão, prática e reforço.</p>
+              <div class="preexam-summary" id="preExamSummary"></div>
+              <div id="preExamContent" class="preexam-targets"></div>
+            </div>
+
             <div class="card" id="examPlanDailyCard">
               <h3>Cronograma diário detalhado</h3>
               <p class="helper-text">Visualize cada dia com os tópicos programados, técnicas sugeridas e ganhos estimados.</p>
@@ -3421,7 +3531,8 @@
       selectedId: null,
       plan: null,
       sessions: [],
-      reviews: []
+      reviews: [],
+      examGuide: null
     };
     let examTimerState = {
       sessionId: null,
@@ -3482,6 +3593,16 @@
     // ========================================================================
     function setLoading(show) {
       document.getElementById('loadingOverlay').classList.toggle('active', show);
+    }
+
+    function formatISODate(date) {
+      if (!(date instanceof Date) || isNaN(date)) return '';
+      const clone = new Date(date.getTime());
+      clone.setHours(0, 0, 0, 0);
+      const year = clone.getFullYear();
+      const month = String(clone.getMonth() + 1).padStart(2, '0');
+      const day = String(clone.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
 
     function toast(message, type = 'success') {
@@ -5833,11 +5954,13 @@
           examsState.plan = null;
           examsState.sessions = [];
           examsState.reviews = [];
+          examsState.examGuide = null;
           renderExamCards();
           if (selectedId) {
             selecionarProva(selectedId, { skipFetch: false, silent: true });
           } else {
             renderExamPlan(null);
+            renderExamGuide(null);
             renderExamSessionsTable();
             renderExamReviewsTable();
           }
@@ -6092,6 +6215,8 @@
         toast('Prova selecionada.', 'info');
       }
       renderExamPlan(examsState.plan && examsState.plan.examId === examId ? examsState.plan : null);
+      renderExamGuide(examsState.examGuide && examsState.examGuide.examId === examId ? examsState.examGuide.data : null);
+      carregarGuiaProva(examId, { silent: true });
       if (options.skipFetch) {
         renderExamSessionsTable();
         renderExamReviewsTable();
@@ -6129,6 +6254,7 @@
           renderExamReviewsTable();
           resetarTimerSessao();
           toast('Plano gerado com sucesso!', 'success');
+          carregarGuiaProva(examsState.selectedId, { silent: false });
         })
         .withFailureHandler(function(error) {
           setLoading(false);
@@ -6159,6 +6285,7 @@
         if (dailyListEl) {
           dailyListEl.innerHTML = '<div class="empty-state">Gere o plano para visualizar o cronograma diário.</div>';
         }
+        renderExamGuide(null);
         return;
       }
 
@@ -6183,6 +6310,268 @@
       }
 
       renderExamDailyPlan(plan);
+    }
+
+    function renderExamGuide(guide) {
+      const helperEl = document.getElementById('examGuideTodayHelper');
+      const summaryEl = document.getElementById('examGuideTodaySummary');
+      const container = document.getElementById('examGuideTodayContent');
+      const preCard = document.getElementById('preExamCard');
+      const preSummary = document.getElementById('preExamSummary');
+      const preContent = document.getElementById('preExamContent');
+      const preHelper = document.getElementById('preExamHelper');
+
+      if (!helperEl || !summaryEl || !container) {
+        return;
+      }
+
+      const resetPreExam = () => {
+        if (preCard) preCard.style.display = 'none';
+        if (preSummary) preSummary.textContent = '';
+        if (preContent) preContent.innerHTML = '';
+        if (preHelper) preHelper.textContent = 'Disponível na véspera da prova para direcionar revisão, prática e reforço.';
+        const infoIcon = document.getElementById('preExamInfoIcon');
+        if (infoIcon) infoIcon.title = 'Pri_preprova = 0.5·(1−Rhoje) + 0.3·(1−acerto_28d) + 0.2·(peso da área normalizado)';
+      };
+
+      if (!guide || guide.ok === false || !guide.planHoje) {
+        if (guide === null) {
+          examsState.examGuide = null;
+        }
+        helperEl.textContent = 'Gere o plano para visualizar as tarefas por conteúdo e etapa.';
+        summaryEl.textContent = '';
+        container.innerHTML = '<div class="empty-state">Gere o plano para visualizar as tarefas do dia.</div>';
+        resetPreExam();
+        return;
+      }
+
+      const planHoje = guide.planHoje || {};
+      const items = Array.isArray(planHoje.itens) ? planHoje.itens : [];
+      const totalMin = planHoje.resumo && isFinite(Number(planHoje.resumo.budgetMin)) ? Number(planHoje.resumo.budgetMin) : 0;
+      const totalDelta = planHoje.resumo && isFinite(Number(planHoje.resumo.deltaRpp)) ? Number(planHoje.resumo.deltaRpp) : 0;
+      const novos = items.filter(item => item && item.status === 'NOVO').length;
+      const historicos = items.filter(item => item && item.status !== 'NOVO').length;
+
+      helperEl.textContent = 'Distribuição calculada automaticamente pelo estágio de cada conteúdo.';
+
+      if (items.length === 0) {
+        summaryEl.textContent = 'Nenhuma tarefa sugerida para hoje.';
+        container.innerHTML = '<div class="empty-state">Nenhuma tarefa sugerida para hoje.</div>';
+      } else {
+        summaryEl.textContent = `Hoje: ${novos} conteúdo(s) novo(s), ${historicos} histórico(s) · ${totalMin.toFixed(0)} min → +${totalDelta.toFixed(1)} pp`;
+        container.innerHTML = '';
+        const LABELS = {
+          leitura: 'Leitura ativa',
+          flashcards_conceituais: 'Criar flashcards conceituais',
+          bloco_questoes: 'Questões novas',
+          flashcards_review: 'Revisar flashcards',
+          cards_erro_create: 'Criar cards de erro',
+          questoes_novas: 'Questões novas'
+        };
+
+        items.forEach(item => {
+          if (!item) return;
+          const card = document.createElement('div');
+          card.className = 'guide-target';
+
+          const header = document.createElement('div');
+          header.className = 'guide-target-header';
+
+          const title = document.createElement('strong');
+          title.textContent = item.alvo || 'Conteúdo';
+          header.appendChild(title);
+
+          const chip = document.createElement('span');
+          chip.className = 'chip';
+          const stageLabel = item.stage || (item.status === 'NOVO' ? 'D1' : '');
+          const deltaLabel = isFinite(Number(item.deltaRpp)) ? Number(item.deltaRpp).toFixed(1) : '0.0';
+          chip.textContent = `${stageLabel || item.status || ''} · +${deltaLabel} pp`;
+          header.appendChild(chip);
+          card.appendChild(header);
+
+          const list = document.createElement('ul');
+          list.className = 'guide-task-list';
+
+          const tasks = Array.isArray(item.tasks) ? item.tasks : [];
+          tasks.forEach(task => {
+            if (!task) return;
+            const minutes = isFinite(Number(task.min)) ? Number(task.min) : 0;
+            const qty = task.qtd !== undefined ? Number(task.qtd) : null;
+            const qtySug = task.qtdSug !== undefined ? Number(task.qtdSug) : null;
+            if (minutes <= 0 && (!qty || qty <= 0) && (!qtySug || qtySug <= 0)) return;
+
+            const row = document.createElement('li');
+            const label = document.createElement('span');
+            label.textContent = LABELS[task.tipo] || task.tipo || 'Tarefa';
+            const value = document.createElement('span');
+            const parts = [];
+            if (minutes > 0) parts.push(`${Math.round(minutes)} min`);
+            if (qtySug && qtySug > 0) parts.push(`${Math.round(qtySug)} cards`);
+            if (qty && qty > 0) {
+              const noun = task.tipo && task.tipo.indexOf('quest') !== -1 ? 'questões' : 'cards';
+              parts.push(`${Math.round(qty)} ${noun}`);
+            }
+            value.textContent = parts.join(' · ');
+            row.appendChild(label);
+            row.appendChild(value);
+            list.appendChild(row);
+          });
+
+          if (list.childElementCount === 0) {
+            const emptyRow = document.createElement('li');
+            const span = document.createElement('span');
+            span.textContent = 'Sem tarefas específicas.';
+            emptyRow.appendChild(span);
+            list.appendChild(emptyRow);
+          }
+
+          card.appendChild(list);
+
+          const diagnostics = item.diagnostics || {};
+          const diagParts = [];
+          if (diagnostics.S !== undefined && isFinite(Number(diagnostics.S))) diagParts.push(`S=${Number(diagnostics.S).toFixed(1)}`);
+          if (diagnostics.Rhoje !== undefined && isFinite(Number(diagnostics.Rhoje))) diagParts.push(`R(t)=${Math.round(Number(diagnostics.Rhoje) * 100)}%`);
+          if (diagnostics.acerto_28d !== undefined && isFinite(Number(diagnostics.acerto_28d))) diagParts.push(`Acerto28d=${Math.round(Number(diagnostics.acerto_28d) * 100)}%`);
+          if (diagnostics.difMedia !== undefined && isFinite(Number(diagnostics.difMedia))) diagParts.push(`Dif=${Number(diagnostics.difMedia).toFixed(1)}`);
+          if (diagParts.length > 0) {
+            const diagEl = document.createElement('div');
+            diagEl.className = 'guide-diagnostics';
+            diagEl.textContent = diagParts.join(' · ');
+            card.appendChild(diagEl);
+          }
+
+          const rationale = item.rationale || {};
+          let rationaleText = '';
+          if (rationale.base === 'novo') {
+            rationaleText = 'Conteúdo novo (D1): leitura, cards e questões para formar a base antes da curva de esquecimento.';
+          } else if (rationale.base === 'historico') {
+            if (rationale.usesBandit) {
+              rationaleText = `Histórico ${item.stage || ''}: sequência priorizada pelo bandit/LCB para maximizar ganho hoje.`;
+            } else {
+              rationaleText = `Histórico ${item.stage || ''}: revisão padrão (cards + questões) usando fallback clássico.`;
+            }
+          }
+          if (rationaleText) {
+            const rationaleEl = document.createElement('div');
+            rationaleEl.className = 'guide-rationale';
+            rationaleEl.textContent = rationaleText;
+            card.appendChild(rationaleEl);
+          }
+
+          container.appendChild(card);
+        });
+      }
+
+      if (guide.preExamPlan && guide.preExamPlan.resumo) {
+        const resumo = guide.preExamPlan.resumo || {};
+        const aloc = guide.preExamPlan.alocacao || {};
+        if (preCard) preCard.style.display = '';
+        if (preHelper) preHelper.textContent = 'Use a véspera para ativar memória, praticar e reforçar erros críticos.';
+        const infoIcon = document.getElementById('preExamInfoIcon');
+        if (infoIcon && guide.preExamPlan.racional) {
+          infoIcon.title = guide.preExamPlan.racional;
+        }
+        if (preSummary) {
+          const ativ = isFinite(Number(aloc.ativacao_perc)) ? Math.round(Number(aloc.ativacao_perc) * 100) : 0;
+          const prat = isFinite(Number(aloc.pratica_perc)) ? Math.round(Number(aloc.pratica_perc) * 100) : 0;
+          const refor = isFinite(Number(aloc.reforco_perc)) ? Math.round(Number(aloc.reforco_perc) * 100) : 0;
+          preSummary.textContent = `Orçamento: ${isFinite(Number(resumo.budgetMin)) ? Number(resumo.budgetMin).toFixed(0) : '0'} min → +${isFinite(Number(resumo.deltaRpp)) ? Number(resumo.deltaRpp).toFixed(1) : '0.0'} pp · Ativação ${ativ}% · Prática ${prat}% · Reforço ${refor}%`;
+        }
+        if (preContent) {
+          preContent.innerHTML = '';
+          const selecionados = Array.isArray(guide.preExamPlan.selecionados) ? guide.preExamPlan.selecionados : [];
+          if (selecionados.length === 0) {
+            preContent.innerHTML = '<div class="empty-state">Sem sugestões para a véspera.</div>';
+          } else {
+            selecionados.forEach(sel => {
+              if (!sel) return;
+              const target = document.createElement('div');
+              target.className = 'preexam-target';
+
+              const head = document.createElement('div');
+              head.className = 'preexam-head';
+              const name = document.createElement('strong');
+              name.textContent = sel.alvo || 'Conteúdo';
+              head.appendChild(name);
+              const chip = document.createElement('span');
+              chip.className = 'chip';
+              chip.textContent = `+${isFinite(Number(sel.deltaRpp)) ? Number(sel.deltaRpp).toFixed(1) : '0.0'} pp`;
+              head.appendChild(chip);
+              target.appendChild(head);
+
+              const phases = document.createElement('div');
+              phases.className = 'preexam-phases';
+
+              const buildRow = (label, data) => {
+                const row = document.createElement('div');
+                row.className = 'phase-row';
+                const labelSpan = document.createElement('span');
+                labelSpan.innerHTML = `<span class="phase-label">${label}</span>`;
+                const valueSpan = document.createElement('span');
+                const parts = [];
+                const minutes = data && isFinite(Number(data.min)) ? Number(data.min) : 0;
+                if (minutes > 0) parts.push(`${Math.round(minutes)} min`);
+                if (data && data.flashcardsRevisar) parts.push(`${Math.round(Number(data.flashcardsRevisar))} cards`);
+                if (data && data.questoes) parts.push(`${Math.round(Number(data.questoes))} questões`);
+                if (data && data.cardsErro) parts.push(`${Math.round(Number(data.cardsErro))} cards`);
+                valueSpan.textContent = parts.join(' · ');
+                row.appendChild(labelSpan);
+                row.appendChild(valueSpan);
+                return row;
+              };
+
+              phases.appendChild(buildRow('Ativação', sel.ativacao || {}));
+              phases.appendChild(buildRow('Prática', sel.pratica || {}));
+              phases.appendChild(buildRow('Reforço', sel.reforco || {}));
+
+              target.appendChild(phases);
+              preContent.appendChild(target);
+            });
+          }
+        }
+      } else {
+        resetPreExam();
+      }
+    }
+
+    function carregarGuiaProva(examId, options = {}) {
+      if (!examId) return;
+      const payload = {
+        examId,
+        date: formatISODate(new Date()),
+        mode: plannerModeSelection || 'AUTO'
+      };
+      const budgetInput = document.getElementById('examGuideBudget');
+      if (budgetInput) {
+        const value = parseFloat(budgetInput.value);
+        if (isFinite(value) && value > 0) payload.budgetMin = value;
+      }
+      const silent = options && options.silent;
+      if (!silent) setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (!silent) setLoading(false);
+          if (!result || result.ok === false) {
+            if (!silent) toast('Não foi possível gerar o guia da prova.', 'error');
+            renderExamGuide(null);
+            return;
+          }
+          examsState.examGuide = { examId, data: result };
+          renderExamGuide(result);
+        })
+        .withFailureHandler(function(error) {
+          if (!silent) setLoading(false);
+          if (!silent) toast('Erro ao gerar guia: ' + (error && error.message ? error.message : error), 'error');
+        })
+        .apiExamGuidePlan(payload);
+    }
+
+    function atualizarExamGuide() {
+      if (!examsState.selectedId) {
+        toast('Selecione uma prova para atualizar o guia.', 'warning');
+        return;
+      }
+      carregarGuiaProva(examsState.selectedId, { silent: false });
     }
 
     function renderExamDailyPlan(plan) {

@@ -30,7 +30,7 @@ const HEADERS = {
   REVER_HOJE: ['alvo', 'prioridade', 'proximaRevisao', 'estabilidade', 'feito'],
   MODEL: ['alvo', 'theta0', 'theta1', 'theta2', 'S_atual', 'ultima_atualizacao', 'sigma', 'n_eff', 'weibull_k'],
   REVISAO_LOG: ['data', 'alvo', 'tDias', 'metaUsada', 'p_prev', 'acertou', 'tempoSeg', 'difPercebida', 'flags', 'obs', 'total', 'acertos'],
-  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'flashcardsPerMinBase', 'minD1ReadMin', 'banditEnabledForGuide', 'kappaPriToDelta', 'fatigueFactor', 'lambdaSurprise', 'coverageTarget7d', 'powerAlphaScale', 'powerBetaScale', 'powerDiversityScale', 'maintAlphaScale', 'maintBetaScale', 'maintDiversityScale', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
+  SETTINGS: ['retentionTarget', 'wPeg', 'wTempo', 'wDif', 'alpha', 'overdueMode', 'lrEta', 'regLambda', 'halfLifeDecayDays', 'reviewOutcomeWeight', 'Smin', 'Smax', 'Imin', 'Imax', 'betaUncertainty', 'shrinkageC', 'lambdaDiversity', 'planGainMix', 'flashcardsPerMinBase', 'flashcardsBuildTimeMin', 'minD1ReadMin', 'banditEnabledForGuide', 'preExamDefaultBudgetMin', 'kappaPriToDelta', 'fatigueFactor', 'lambdaSurprise', 'coverageTarget7d', 'powerAlphaScale', 'powerBetaScale', 'powerDiversityScale', 'maintAlphaScale', 'maintBetaScale', 'maintDiversityScale', 'useAdvancedPriority', 'useGainLCB', 'useRLSKalman', 'useDiversityReg', 'useWeibull', 'useBanditPlanner', 'useABTesting'],
   EXAM_CONFIG: ['area', 'peso', 'dataProva'],
   POLICY_LOG: ['timestamp', 'alvo', 'area', 'subarea', 'pri', 'eviPerMin', 'overdue', 'diversity', 'custos', 'tempoPrev', 'decisao', 'policyVersion'],
   EFFECTS: ['alvo', 'ATE_pct', 'lo', 'hi', 'n_pairs', 'updated'],
@@ -59,8 +59,10 @@ const DEFAULT_SETTINGS = {
   lambdaDiversity: 0.25,
   planGainMix: 0.5,
   flashcardsPerMinBase: 2.0,
+  flashcardsBuildTimeMin: 15,
   minD1ReadMin: 15,
   banditEnabledForGuide: true,
+  preExamDefaultBudgetMin: 180,
   kappaPriToDelta: 0.2,
   fatigueFactor: 0.3,
   lambdaSurprise: 0.4,
@@ -1457,6 +1459,317 @@ function buildExamStudyPlan(exam, options, settings) {
   };
 }
 
+function fetchGuidePlanWithCache(cache, alvo, minutes, settings, dataCache, logRows, revisaoRows, examConfig, referenceDate, prefs) {
+  if (!alvo) return null;
+  const safeMinutes = Math.max(5, Math.round(minutes || 0));
+  const key = `${alvo}__${safeMinutes}`;
+  if (cache.has(key)) {
+    return cache.get(key);
+  }
+  const computed = computeStudyGuidePlanV2(alvo, safeMinutes, prefs, settings, dataCache, logRows, revisaoRows, examConfig, referenceDate);
+  cache.set(key, computed || null);
+  return computed;
+}
+
+function transformGuidePlanForExam(plan, settings) {
+  if (!plan || !plan.planToday) return null;
+  const tasks = [];
+  const todayPlan = plan.planToday;
+  const status = plan.status || 'NOVO';
+  const stage = plan.stage || (status === 'NOVO' ? 'D1' : 'S1');
+  const buildTimeSetting = settings && settings.flashcardsBuildTimeMin !== undefined
+    ? parseFloat(settings.flashcardsBuildTimeMin)
+    : DEFAULT_SETTINGS.flashcardsBuildTimeMin;
+  const flashcardsBuildTime = isFinite(buildTimeSetting) && buildTimeSetting > 0 ? buildTimeSetting : DEFAULT_SETTINGS.flashcardsBuildTimeMin;
+
+  if (status === 'NOVO') {
+    if (todayPlan.readMin > 0) {
+      tasks.push({ tipo: 'leitura', min: Math.round(todayPlan.readMin) });
+    }
+    if (todayPlan.flashcardsCreate > 0) {
+      const createMin = todayPlan.flashcardsCreateMin !== undefined
+        ? Math.round(Math.max(0, todayPlan.flashcardsCreateMin))
+        : Math.round(flashcardsBuildTime);
+      tasks.push({ tipo: 'flashcards_conceituais', min: createMin, qtdSug: todayPlan.flashcardsCreate });
+    }
+    if (todayPlan.questionsNew > 0) {
+      tasks.push({ tipo: 'bloco_questoes', qtd: todayPlan.questionsNew, min: Math.round(Math.max(todayPlan.questionsEstMin || 0, 0)) });
+    }
+  } else {
+    if (todayPlan.flashcardsReviewMin > 0) {
+      tasks.push({ tipo: 'flashcards_review', min: Math.round(todayPlan.flashcardsReviewMin) });
+    }
+    if (todayPlan.flashcardsCreate > 0) {
+      const createMin = todayPlan.flashcardsCreateMin !== undefined
+        ? Math.round(Math.max(0, todayPlan.flashcardsCreateMin))
+        : Math.round(flashcardsBuildTime);
+      tasks.push({ tipo: 'cards_erro_create', min: createMin, qtd: todayPlan.flashcardsCreate });
+    }
+    if (todayPlan.questionsNew > 0) {
+      tasks.push({ tipo: 'questoes_novas', qtd: todayPlan.questionsNew, min: Math.round(Math.max(todayPlan.questionsEstMin || 0, 0)) });
+    }
+  }
+
+  const totalMin = tasks.reduce((sum, task) => sum + (Math.max(0, Number(task.min) || 0)), 0);
+  const delta = todayPlan.deltaRpp !== undefined ? Number(todayPlan.deltaRpp) : 0;
+
+  return {
+    alvo: plan.alvo,
+    area: plan.area,
+    subarea: plan.subarea,
+    status,
+    stage,
+    tasks,
+    deltaRpp: Math.round(Math.max(0, delta) * 10) / 10,
+    totalMin: Math.round(totalMin),
+    diagnostics: plan.diagnostics || {},
+    rationale: plan.rationale || todayPlan.rationale || {},
+    rawPlan: todayPlan
+  };
+}
+
+function buildExamPlanForDate(plan, targetDate, settings, dataCache, logRows, revisaoRows, examConfig, prefs, cache) {
+  const output = {
+    resumo: { budgetMin: 0, deltaRpp: 0 },
+    itens: []
+  };
+  if (!plan || !Array.isArray(plan.daily)) {
+    return output;
+  }
+  const dateKey = formatDateDDMMYYYY(targetDate);
+  const dayEntry = plan.daily.find(entry => entry && entry.day === dateKey);
+  if (!dayEntry || !Array.isArray(dayEntry.topics)) {
+    return output;
+  }
+
+  dayEntry.topics.forEach(topic => {
+    if (!topic) return;
+    const alvo = (topic.topic || topic.alvo || '').toString().trim();
+    if (!alvo) return;
+    const minutes = Math.max(5, Math.round(Number(topic.totalMinutes) || 0));
+    const guidePlan = fetchGuidePlanWithCache(cache, alvo, minutes, settings, dataCache, logRows, revisaoRows, examConfig, targetDate, prefs);
+    if (!guidePlan) return;
+    const transformed = transformGuidePlanForExam(guidePlan, settings);
+    if (!transformed) return;
+    if (!isFinite(transformed.totalMin) || transformed.totalMin <= 0) {
+      transformed.totalMin = minutes;
+    }
+    output.itens.push(transformed);
+  });
+
+  let totalMin = 0;
+  let totalDelta = 0;
+  output.itens.forEach(item => {
+    totalMin += Math.max(0, Number(item.totalMin) || 0);
+    totalDelta += Math.max(0, Number(item.deltaRpp) || 0);
+  });
+
+  output.resumo = {
+    budgetMin: Math.round(totalMin),
+    deltaRpp: Math.round(totalDelta * 10) / 10
+  };
+
+  return output;
+}
+
+function computePreExamPlan(topics, settings, dataCache, logRows, revisaoRows, examConfig, referenceDate, prefs, cache, budgetMin) {
+  const normalizedTopics = Array.isArray(topics) ? topics.filter(item => item && item.alvo) : [];
+  const totalBudget = Math.max(0, Math.round(budgetMin || 0));
+  if (!normalizedTopics.length || totalBudget <= 0) {
+    return null;
+  }
+
+  const areaWeightConfig = {};
+  (examConfig || []).forEach(row => {
+    if (!row) return;
+    const areaKey = (row.area || '').toString().trim();
+    if (!areaKey) return;
+    const weight = parseFloat(row.peso);
+    if (isFinite(weight) && weight > 0) {
+      areaWeightConfig[areaKey] = weight;
+    }
+  });
+
+  const infoList = [];
+  const areaTotals = {};
+  normalizedTopics.forEach(topic => {
+    const alvo = topic.alvo;
+    const area = (topic.area || '').trim() || 'Sem área';
+    const baseWeight = isFinite(topic.weight) && topic.weight > 0 ? topic.weight : 1;
+    const weight = areaWeightConfig[area] !== undefined ? areaWeightConfig[area] : baseWeight;
+    areaTotals[area] = (areaTotals[area] || 0) + weight;
+
+    const planSnapshot = fetchGuidePlanWithCache(cache, alvo, Math.max(45, settings.flashcardsBuildTimeMin + 30 || 0), settings, dataCache, logRows, revisaoRows, examConfig, referenceDate, prefs);
+    if (!planSnapshot) {
+      return;
+    }
+    const diagnostics = planSnapshot.diagnostics || {};
+    const recall = diagnostics.Rhoje !== undefined && isFinite(diagnostics.Rhoje) ? clamp(diagnostics.Rhoje, 0, 1) : 0.4;
+    const acc28 = diagnostics.acerto_28d !== undefined && isFinite(diagnostics.acerto_28d) ? clamp(diagnostics.acerto_28d, 0, 1) : 0.6;
+    const tempoMedio = diagnostics.tempoMedio !== undefined && isFinite(diagnostics.tempoMedio) && diagnostics.tempoMedio > 0 ? diagnostics.tempoMedio : 1;
+
+    infoList.push({
+      alvo,
+      area,
+      subarea: planSnapshot.subarea || '',
+      baseWeight: weight,
+      recall,
+      acc28,
+      tempoMedio,
+      guide: planSnapshot
+    });
+  });
+
+  if (!infoList.length) {
+    return null;
+  }
+
+  const totalAreaWeight = Object.values(areaTotals).reduce((sum, value) => sum + value, 0) || infoList.length;
+  infoList.forEach(item => {
+    const areaWeight = areaTotals[item.area] || totalAreaWeight;
+    const areaNorm = areaWeight / totalAreaWeight;
+    const pri = 0.5 * (1 - item.recall) + 0.3 * (1 - item.acc28) + 0.2 * areaNorm;
+    item.priority = Math.max(pri, 0.01);
+  });
+
+  let totalPriority = infoList.reduce((sum, item) => sum + item.priority, 0);
+  if (totalPriority <= 0) {
+    totalPriority = infoList.length;
+  }
+
+  const allocationList = infoList.map(item => {
+    let minutes = roundToStep((totalBudget * item.priority) / Math.max(totalPriority, 1e-6), 5);
+    if (minutes < 5) minutes = 5;
+    return Object.assign({}, item, { minutes });
+  });
+
+  let totalAllocated = allocationList.reduce((sum, item) => sum + item.minutes, 0);
+  const step = 5;
+  if (totalAllocated > totalBudget) {
+    let deficit = totalAllocated - totalBudget;
+    const order = allocationList.slice().sort((a, b) => b.minutes - a.minutes);
+    let pointer = 0;
+    while (deficit > 0 && order.length > 0 && pointer < order.length * 5) {
+      const target = order[pointer % order.length];
+      if (target.minutes > step) {
+        target.minutes -= step;
+        deficit -= step;
+      }
+      pointer += 1;
+    }
+  } else if (totalAllocated < totalBudget) {
+    let surplus = totalBudget - totalAllocated;
+    const order = allocationList.slice().sort((a, b) => b.priority - a.priority);
+    let pointer = 0;
+    while (surplus > 0 && order.length > 0 && pointer < order.length * 5) {
+      const target = order[pointer % order.length];
+      target.minutes += step;
+      surplus -= step;
+      pointer += 1;
+    }
+  }
+
+  totalAllocated = allocationList.reduce((sum, item) => sum + item.minutes, 0);
+  if (totalAllocated <= 0) {
+    return null;
+  }
+
+  const activationShare = 0.15;
+  const practiceShare = 0.65;
+  const reforcoShare = 0.20;
+
+  const selections = [];
+  let totalActivation = 0;
+  let totalPractice = 0;
+  let totalReforco = 0;
+  let totalDelta = 0;
+
+  allocationList.forEach(item => {
+    if (!item.minutes || item.minutes <= 0) return;
+    let activationMin = roundToStep(item.minutes * activationShare, 5);
+    let practiceMin = roundToStep(item.minutes * practiceShare, 5);
+    let reforcoMin = item.minutes - activationMin - practiceMin;
+
+    if (reforcoMin < 0) {
+      practiceMin += reforcoMin;
+      reforcoMin = 0;
+    }
+    if (practiceMin < 0) {
+      activationMin += practiceMin;
+      practiceMin = 0;
+    }
+    if (activationMin < 0) activationMin = 0;
+
+    const buildMin = Math.max(5, Math.round(settings.flashcardsBuildTimeMin));
+    if (reforcoMin > 0 && reforcoMin < buildMin && item.minutes >= buildMin) {
+      const needed = buildMin - reforcoMin;
+      if (practiceMin > needed) {
+        practiceMin -= needed;
+        reforcoMin += needed;
+      } else if (activationMin > needed) {
+        activationMin = Math.max(0, activationMin - needed);
+        reforcoMin += needed;
+      } else {
+        reforcoMin = Math.min(buildMin, item.minutes - activationMin - practiceMin);
+      }
+    }
+
+    const sumCheck = activationMin + practiceMin + reforcoMin;
+    if (sumCheck !== item.minutes) {
+      const diff = item.minutes - sumCheck;
+      practiceMin += diff;
+      if (practiceMin < 0) {
+        activationMin = Math.max(0, activationMin + practiceMin);
+        practiceMin = 0;
+      }
+    }
+
+    const flashcardsRevisar = activationMin > 0 ? Math.max(10, Math.round(activationMin * 3)) : 0;
+    const tempoQuest = Math.max(item.tempoMedio, 0.5);
+    const questoes = practiceMin > 0 ? Math.max(10, Math.round(practiceMin / tempoQuest)) : 0;
+    const cardsErro = reforcoMin > 0 ? Math.max(10, Math.min(80, Math.round((1 - item.acc28) * 60))) : 0;
+
+    const deltaPlan = fetchGuidePlanWithCache(cache, item.alvo, item.minutes, settings, dataCache, logRows, revisaoRows, examConfig, referenceDate, prefs);
+    const delta = deltaPlan && deltaPlan.planToday && deltaPlan.planToday.deltaRpp ? Number(deltaPlan.planToday.deltaRpp) : 0;
+
+    selections.push({
+      alvo: item.alvo,
+      area: item.area,
+      subarea: item.subarea,
+      stage: item.guide.stage || '',
+      status: item.guide.status || 'HISTORICO',
+      ativacao: { flashcardsRevisar, min: Math.round(activationMin) },
+      pratica: { questoes, min: Math.round(practiceMin) },
+      reforco: { cardsErro, min: Math.round(reforcoMin) },
+      deltaRpp: Math.round(Math.max(0, delta) * 10) / 10
+    });
+
+    totalActivation += Math.max(0, activationMin);
+    totalPractice += Math.max(0, practiceMin);
+    totalReforco += Math.max(0, reforcoMin);
+    totalDelta += Math.max(0, delta);
+  });
+
+  if (!selections.length) {
+    return null;
+  }
+
+  const totalMinutes = totalActivation + totalPractice + totalReforco;
+  return {
+    resumo: {
+      budgetMin: Math.round(totalMinutes),
+      deltaRpp: Math.round(totalDelta * 10) / 10
+    },
+    alocacao: {
+      ativacao_perc: totalMinutes > 0 ? totalActivation / totalMinutes : 0,
+      pratica_perc: totalMinutes > 0 ? totalPractice / totalMinutes : 0,
+      reforco_perc: totalMinutes > 0 ? totalReforco / totalMinutes : 0
+    },
+    selecionados: selections,
+    racional: 'Pri_preprova = 0.5*(1−Rhoje) + 0.3*(1−acerto_28d) + 0.2*(peso_area_norm)'
+  };
+}
+
 function serializeExamRecord(exam) {
   if (!exam) return null;
   return {
@@ -1571,6 +1884,128 @@ function apiUpdateExam(payload) {
     persistExamRecord(exam);
 
     return { ok: true, exam: serializeExamRecord(exam) };
+  } catch (e) {
+    return { ok: false, error: e.toString() };
+  }
+}
+
+function apiExamGuidePlan(params) {
+  try {
+    ensureStudyPlanningSheets();
+    const payload = params || {};
+    const rawSettings = apiGetSettings();
+    const modeInput = (payload.mode || payload.modo || 'AUTO').toString();
+    const planningSettings = applyPlanningModeAdjustments(Object.assign({}, rawSettings), modeInput);
+
+    const prefs = {
+      flashcardsPerMinBase: planningSettings.flashcardsPerMinBase !== undefined
+        ? parseFloat(planningSettings.flashcardsPerMinBase)
+        : DEFAULT_SETTINGS.flashcardsPerMinBase,
+      blockQuestionsTarget: 25,
+      readShare: 0.35
+    };
+
+    const today = parseIsoDateToLocal(payload.date || payload.data) || new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const exams = loadExamRecords();
+    const examId = (payload.examId || payload.id || '').toString().trim();
+    const exam = examId ? exams.find(item => item && item.id === examId) : null;
+
+    let normalizedTopics = [];
+    let examTitle = '';
+    let examDate = null;
+    let hoursPerDay = 3;
+    let importance = 1;
+
+    if (exam) {
+      examTitle = exam.title || '';
+      examDate = exam.dateTime ? new Date(exam.dateTime.getTime()) : null;
+      hoursPerDay = isFinite(exam.hoursPerDay) && exam.hoursPerDay > 0 ? exam.hoursPerDay : 3;
+      importance = exam.importance || 1;
+      normalizedTopics = normalizeExamTopicsList(exam.topics, exam.title);
+    } else if (Array.isArray(payload.targets)) {
+      normalizedTopics = normalizeExamTopicsList(payload.targets, payload.title || 'Plano de Prova');
+      examTitle = payload.title || 'Plano de Prova';
+      if (payload.dateTime || payload.dataProva) {
+        examDate = parseExamDateTime(payload.dateTime || payload.dataProva);
+      }
+      hoursPerDay = payload.hoursPerDay !== undefined && isFinite(payload.hoursPerDay)
+        ? Math.max(0.5, Number(payload.hoursPerDay))
+        : 3;
+    }
+
+    if (!normalizedTopics.length) {
+      return { ok: false, error: 'Nenhum conteúdo para planejar' };
+    }
+
+    if (!examDate) {
+      examDate = exam && exam.dateTime ? new Date(exam.dateTime.getTime()) : new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
+    }
+    examDate.setHours(0, 0, 0, 0);
+
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const daysToExam = Math.max(0, Math.round((examDate.getTime() - today.getTime()) / msPerDay));
+
+    const budgetInput = payload.budgetMin !== undefined ? parseFloat(payload.budgetMin) : NaN;
+    const budgetMin = isFinite(budgetInput) && budgetInput > 0 ? budgetInput : Math.round(hoursPerDay * 60);
+    const planningHours = budgetMin > 0 ? budgetMin / 60 : hoursPerDay;
+
+    const dataCache = buildStudyGuideData(planningSettings);
+    const logRows = readSheetData(SHEET_NAMES.LOG);
+    const revisaoRows = readSheetData(SHEET_NAMES.REVISAO_LOG);
+    const examConfig = readSheetData(SHEET_NAMES.EXAM_CONFIG);
+    const guideCache = new Map();
+
+    const plan = buildExamStudyPlan({
+      id: exam ? exam.id : '',
+      title: examTitle || (exam ? exam.title : 'Plano de Prova'),
+      dateTime: examDate,
+      hoursPerDay: planningHours,
+      topics: normalizedTopics,
+      importance
+    }, {
+      hoursPerDay: planningHours,
+      topics: normalizedTopics,
+      dateTime: examDate
+    }, planningSettings);
+
+    const planHoje = buildExamPlanForDate(plan, today, planningSettings, dataCache, logRows, revisaoRows, examConfig, prefs, guideCache);
+    if ((!planHoje.resumo || planHoje.resumo.budgetMin <= 0) && budgetMin > 0) {
+      planHoje.resumo = planHoje.resumo || {};
+      planHoje.resumo.budgetMin = Math.round(budgetMin);
+      planHoje.resumo.deltaRpp = planHoje.resumo.deltaRpp || 0;
+    }
+
+    const preBudgetInput = payload.preExamBudgetMin !== undefined ? parseFloat(payload.preExamBudgetMin) : NaN;
+    const defaultPreBudget = rawSettings.preExamDefaultBudgetMin !== undefined
+      ? parseFloat(rawSettings.preExamDefaultBudgetMin)
+      : DEFAULT_SETTINGS.preExamDefaultBudgetMin;
+    const preBudget = isFinite(preBudgetInput) && preBudgetInput > 0
+      ? preBudgetInput
+      : (isFinite(budgetInput) && budgetInput > 0 ? budgetMin : defaultPreBudget);
+
+    let preExamPlan = null;
+    if (daysToExam === 1) {
+      preExamPlan = computePreExamPlan(normalizedTopics, planningSettings, dataCache, logRows, revisaoRows, examConfig, today, prefs, guideCache, preBudget);
+    }
+
+    const response = {
+      ok: true,
+      exam: {
+        id: exam ? exam.id : '',
+        nome: examTitle || (exam ? exam.title : ''),
+        dataProva: formatDateDDMMYYYY(examDate),
+        daysUntil: daysToExam
+      },
+      planHoje
+    };
+
+    if (preExamPlan) {
+      response.preExamPlan = preExamPlan;
+    }
+
+    return response;
   } catch (e) {
     return { ok: false, error: e.toString() };
   }
@@ -2189,6 +2624,15 @@ function apiSaveSettings(obj) {
     if (!isFinite(obj.betaUncertainty)) obj.betaUncertainty = DEFAULT_SETTINGS.betaUncertainty;
     obj.shrinkageC = parseFloat(obj.shrinkageC);
     if (!isFinite(obj.shrinkageC)) obj.shrinkageC = DEFAULT_SETTINGS.shrinkageC;
+    obj.flashcardsPerMinBase = parseFloat(obj.flashcardsPerMinBase);
+    if (!isFinite(obj.flashcardsPerMinBase) || obj.flashcardsPerMinBase <= 0) obj.flashcardsPerMinBase = DEFAULT_SETTINGS.flashcardsPerMinBase;
+    obj.flashcardsBuildTimeMin = parseFloat(obj.flashcardsBuildTimeMin);
+    if (!isFinite(obj.flashcardsBuildTimeMin) || obj.flashcardsBuildTimeMin <= 0) obj.flashcardsBuildTimeMin = DEFAULT_SETTINGS.flashcardsBuildTimeMin;
+    obj.minD1ReadMin = parseFloat(obj.minD1ReadMin);
+    if (!isFinite(obj.minD1ReadMin) || obj.minD1ReadMin <= 0) obj.minD1ReadMin = DEFAULT_SETTINGS.minD1ReadMin;
+    obj.banditEnabledForGuide = asBoolean(obj.banditEnabledForGuide);
+    obj.preExamDefaultBudgetMin = parseFloat(obj.preExamDefaultBudgetMin);
+    if (!isFinite(obj.preExamDefaultBudgetMin) || obj.preExamDefaultBudgetMin <= 0) obj.preExamDefaultBudgetMin = DEFAULT_SETTINGS.preExamDefaultBudgetMin;
     obj.lambdaDiversity = parseFloat(obj.lambdaDiversity);
     if (!isFinite(obj.lambdaDiversity)) obj.lambdaDiversity = DEFAULT_SETTINGS.lambdaDiversity;
     obj.planGainMix = clamp(parseFloat(obj.planGainMix), 0, 1);
@@ -2685,6 +3129,12 @@ function applyCapI(I, Imin, Imax) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function roundToStep(value, step) {
+  const unit = Math.max(1, Math.round(step || 1));
+  if (!isFinite(value)) return 0;
+  return Math.round(value / unit) * unit;
 }
 
 function asBoolean(value) {
@@ -5031,6 +5481,8 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
   const kappaPriToDelta = isFinite(kappaInput) ? kappaInput : DEFAULT_SETTINGS.kappaPriToDelta;
   const minReadSetting = settings.minD1ReadMin !== undefined ? parseFloat(settings.minD1ReadMin) : DEFAULT_SETTINGS.minD1ReadMin;
   const guideBanditEnabled = settings.banditEnabledForGuide !== undefined ? asBoolean(settings.banditEnabledForGuide) : DEFAULT_SETTINGS.banditEnabledForGuide;
+  const flashBuildSetting = settings.flashcardsBuildTimeMin !== undefined ? parseFloat(settings.flashcardsBuildTimeMin) : DEFAULT_SETTINGS.flashcardsBuildTimeMin;
+  const flashcardsBuildMin = isFinite(flashBuildSetting) && flashBuildSetting > 0 ? flashBuildSetting : DEFAULT_SETTINGS.flashcardsBuildTimeMin;
 
   const todayDate = new Date(today || new Date());
   todayDate.setHours(0, 0, 0, 0);
@@ -5112,27 +5564,43 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
       readMin = Math.max(0, Math.min(totalMinutes, minRead));
     }
 
-    let remaining = Math.max(0, totalMinutes - readMin);
-    let blockMin = Math.round(remaining * 0.45);
-    if (blockMin < 20 && remaining >= 20) {
+    const afterRead = Math.max(0, totalMinutes - readMin);
+    const flashTarget = Math.max(0, Math.round(flashcardsBuildMin));
+    let flashMin = Math.min(afterRead, flashTarget);
+    let remainingForBlock = Math.max(0, afterRead - flashMin);
+
+    let blockMin = Math.round(afterRead * 0.45);
+    if (blockMin < 20 && afterRead >= 20) {
       blockMin = 20;
     }
-    if (blockMin > remaining) {
-      blockMin = remaining;
+    blockMin = Math.min(blockMin, remainingForBlock);
+    if (blockMin < 0) {
+      blockMin = 0;
     }
-    remaining = Math.max(0, totalMinutes - readMin - blockMin);
-    let flashMin = Math.round(remaining);
-    if (readMin + blockMin + flashMin !== totalMinutes) {
-      const diff = totalMinutes - (readMin + blockMin + flashMin);
-      flashMin = Math.max(0, flashMin + diff);
-      if (flashMin < 0) {
-        blockMin = Math.max(0, blockMin + flashMin);
-        flashMin = 0;
+
+    let totalUsed = readMin + flashMin + blockMin;
+    if (totalUsed < totalMinutes) {
+      blockMin += (totalMinutes - totalUsed);
+    } else if (totalUsed > totalMinutes) {
+      let deficit = totalUsed - totalMinutes;
+      if (blockMin > 0) {
+        const reduce = Math.min(blockMin, deficit);
+        blockMin -= reduce;
+        deficit -= reduce;
       }
-      if (blockMin < 0) {
-        readMin = Math.max(0, readMin + blockMin);
-        blockMin = 0;
+      if (deficit > 0 && flashMin > 0) {
+        const reduceFlash = Math.min(flashMin, deficit);
+        flashMin -= reduceFlash;
+        deficit -= reduceFlash;
       }
+      if (deficit > 0 && readMin > 0) {
+        readMin = Math.max(0, readMin - deficit);
+      }
+    }
+
+    if (flashMin <= 0 && afterRead > 0) {
+      flashMin = Math.min(flashTarget, afterRead);
+      blockMin = Math.max(0, totalMinutes - readMin - flashMin);
     }
 
     const difFactor = clamp(1 + 0.1 * (difMedia - 3), 0.6, 1.4);
@@ -5158,7 +5626,7 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
     const deltaRpp = Math.max(0, 100 * kappaPriToDelta * (1 - recallToday));
     const flashcardsCreateMin = Math.round(Math.max(0, flashMin));
     planToday = {
-      readMin: Math.round(readMin),
+      readMin: Math.round(Math.max(0, readMin)),
       flashcardsCreate,
       flashcardsReviewMin: 0,
       flashcardsCreateMin,
@@ -5188,21 +5656,33 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
     reviewMin = Math.min(reviewMin, totalMinutes);
 
     const remainingAfterReview = Math.max(0, totalMinutes - reviewMin);
+    const creationTarget = Math.max(0, Math.round(flashcardsBuildMin));
     let questionShare = 0.5;
     if (stage === 'S1') questionShare = 0.6;
     if (stage === 'S3') questionShare = 0.35;
-    let questionsMin = Math.round(remainingAfterReview * questionShare);
-    if (remainingAfterReview > 0 && questionsMin < 15) {
-      questionsMin = Math.min(remainingAfterReview, 15);
-    }
-    if (questionsMin > remainingAfterReview) {
-      questionsMin = remainingAfterReview;
-    }
-
-    const creationMin = Math.max(0, remainingAfterReview - questionsMin);
-
     const cardsErroBase = isFinite(acerto28) ? Math.round((1 - acerto28) * 40) : 30;
     const flashcardsCreate = Math.max(10, Math.min(60, cardsErroBase));
+
+    let creationMin = flashcardsCreate > 0 ? Math.min(remainingAfterReview, creationTarget) : 0;
+    let availableAfterCreation = Math.max(0, remainingAfterReview - creationMin);
+
+    let questionsMin = Math.round(availableAfterCreation * questionShare);
+    if (availableAfterCreation > 0 && questionsMin < 15) {
+      questionsMin = Math.min(availableAfterCreation, 15);
+    }
+    if (questionsMin > availableAfterCreation) {
+      questionsMin = availableAfterCreation;
+    }
+
+    let leftoverAfterAllocation = remainingAfterReview - creationMin - questionsMin;
+    if (leftoverAfterAllocation > 0) {
+      questionsMin += leftoverAfterAllocation;
+    }
+
+    if (creationMin <= 0 && flashcardsCreate > 0 && remainingAfterReview > 0) {
+      creationMin = Math.min(remainingAfterReview, creationTarget);
+      questionsMin = Math.max(0, remainingAfterReview - creationMin);
+    }
 
     let questionsNew = 0;
     let questionsEstMin = Math.round(questionsMin);
@@ -5213,8 +5693,8 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
         questionsNew = Math.max(5, Math.round(questionsMin / tempoQuest));
       }
       questionsEstMin = Math.round(questionsNew * tempoQuest);
-      if (questionsEstMin > remainingAfterReview) {
-        const adjusted = Math.floor(remainingAfterReview / tempoQuest);
+      if (questionsEstMin > questionsMin) {
+        const adjusted = Math.floor(questionsMin / tempoQuest);
         questionsNew = Math.max(3, adjusted);
         questionsEstMin = Math.round(questionsNew * tempoQuest);
       }
@@ -5239,7 +5719,7 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
     const effectiveMinutes = Math.max(1, totalMinutes);
     const deltaRpp = Math.max(0, Math.round(deltaPerMin * effectiveMinutes * 1000) / 10);
 
-    const creationEstMin = Math.round(creationMin);
+    const creationEstMin = Math.round(Math.max(0, creationMin));
     planToday = {
       readMin: 0,
       flashcardsCreate,
