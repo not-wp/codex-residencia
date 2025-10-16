@@ -5547,7 +5547,7 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
     stage = determineGuideStage(nEff, daysSinceLast, recallToday, lapses, acerto28, estabilidade);
   }
 
-  const totalMinutes = budgetMinutes;
+  let totalMinutes = budgetMinutes;
   const tempoQuest = Math.max(tempoMedioMin, 0.5);
 
   let planToday;
@@ -5564,43 +5564,19 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
       readMin = Math.max(0, Math.min(totalMinutes, minRead));
     }
 
-    const afterRead = Math.max(0, totalMinutes - readMin);
     const flashTarget = Math.max(0, Math.round(flashcardsBuildMin));
-    let flashMin = Math.min(afterRead, flashTarget);
-    let remainingForBlock = Math.max(0, afterRead - flashMin);
+    const minQuestionMinutes = Math.max(Math.ceil(tempoQuest * 20), 20);
+    const minimumTotal = readMin + flashTarget + minQuestionMinutes;
+    if (totalMinutes < minimumTotal) {
+      totalMinutes = minimumTotal;
+    }
+
+    const afterRead = Math.max(0, totalMinutes - readMin);
+    const flashMin = flashTarget;
 
     let blockMin = Math.round(afterRead * 0.45);
-    if (blockMin < 20 && afterRead >= 20) {
-      blockMin = 20;
-    }
-    blockMin = Math.min(blockMin, remainingForBlock);
-    if (blockMin < 0) {
-      blockMin = 0;
-    }
-
-    let totalUsed = readMin + flashMin + blockMin;
-    if (totalUsed < totalMinutes) {
-      blockMin += (totalMinutes - totalUsed);
-    } else if (totalUsed > totalMinutes) {
-      let deficit = totalUsed - totalMinutes;
-      if (blockMin > 0) {
-        const reduce = Math.min(blockMin, deficit);
-        blockMin -= reduce;
-        deficit -= reduce;
-      }
-      if (deficit > 0 && flashMin > 0) {
-        const reduceFlash = Math.min(flashMin, deficit);
-        flashMin -= reduceFlash;
-        deficit -= reduceFlash;
-      }
-      if (deficit > 0 && readMin > 0) {
-        readMin = Math.max(0, readMin - deficit);
-      }
-    }
-
-    if (flashMin <= 0 && afterRead > 0) {
-      flashMin = Math.min(flashTarget, afterRead);
-      blockMin = Math.max(0, totalMinutes - readMin - flashMin);
+    if (blockMin < minQuestionMinutes) {
+      blockMin = minQuestionMinutes;
     }
 
     const difFactor = clamp(1 + 0.1 * (difMedia - 3), 0.6, 1.4);
@@ -5616,15 +5592,14 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
     let questionsEstMin = Math.round(blockMin);
     if (blockMin > 0) {
       const maxByTime = Math.max(1, Math.floor(blockMin / tempoQuest));
-      questionsNew = Math.max(5, Math.round(Math.min(blockTarget, maxByTime)));
-      questionsEstMin = Math.round(questionsNew * tempoQuest);
-      if (questionsEstMin > blockMin) {
-        questionsEstMin = Math.round(blockMin);
-      }
+      const capped = Math.min(blockTarget, maxByTime);
+      questionsNew = Math.max(20, capped);
+      questionsEstMin = Math.round(Math.max(questionsNew * tempoQuest, minQuestionMinutes));
+      blockMin = questionsEstMin;
     }
 
     const deltaRpp = Math.max(0, 100 * kappaPriToDelta * (1 - recallToday));
-    const flashcardsCreateMin = Math.round(Math.max(0, flashMin));
+    const flashcardsCreateMin = Math.round(Math.max(0, flashMin > 0 ? Math.max(flashMin, flashcardsBuildMin) : 0));
     planToday = {
       readMin: Math.round(Math.max(0, readMin)),
       flashcardsCreate,
