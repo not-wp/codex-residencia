@@ -5535,7 +5535,27 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
   recallToday = clamp(recallToday, 0, 1);
 
   const modelNEff = modelRow && modelRow.n_eff !== undefined ? parseFloat(modelRow.n_eff) : NaN;
-  const hasSheetHistory = !!statsRow || !!spacedRow || !!modelRow;
+  const statsHasEvidence = !!statsRow && (
+    isFinite(parseFloat(statsRow.total_blocos)) && parseFloat(statsRow.total_blocos) > 0 ||
+    isFinite(parseFloat(statsRow.questoes)) && parseFloat(statsRow.questoes) > 0 ||
+    isFinite(parseFloat(statsRow.acertos)) && parseFloat(statsRow.acertos) > 0 ||
+    isFinite(parseFloat(statsRow.acerto_vida)) && parseFloat(statsRow.acerto_vida) > 0 ||
+    isFinite(parseFloat(statsRow.acerto_28d)) && parseFloat(statsRow.acerto_28d) > 0 ||
+    isFinite(parseFloat(statsRow.acerto_7d)) && parseFloat(statsRow.acerto_7d) > 0
+  );
+  const spacedHasEvidence = !!spacedRow && (
+    (spacedRow.ultimaRevisao && parseSheetDate(spacedRow.ultimaRevisao)) ||
+    (spacedRow.proximaRevisao && parseSheetDate(spacedRow.proximaRevisao)) ||
+    (isFinite(parseFloat(spacedRow.estabilidade)) && parseFloat(spacedRow.estabilidade) > 0) ||
+    (isFinite(parseFloat(spacedRow.lapses)) && parseFloat(spacedRow.lapses) > 0)
+  );
+  const modelHasEvidence = !!modelRow && (
+    (isFinite(parseFloat(modelRow.S_atual)) && parseFloat(modelRow.S_atual) > 0) ||
+    (isFinite(parseFloat(modelRow.n_eff)) && parseFloat(modelRow.n_eff) > 0) ||
+    (isFinite(parseFloat(modelRow.theta0)) || isFinite(parseFloat(modelRow.theta1)) || isFinite(parseFloat(modelRow.theta2)))
+  );
+
+  const hasSheetHistory = statsHasEvidence || spacedHasEvidence || modelHasEvidence;
   const fallbackNEffBase = historyInfo.totalCount;
   const fallbackNEff = fallbackNEffBase > 0 ? fallbackNEffBase : (hasSheetHistory ? 1 : 0);
   const nEff = isFinite(modelNEff) && modelNEff >= 0 ? modelNEff : fallbackNEff;
