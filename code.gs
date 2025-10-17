@@ -133,12 +133,46 @@ function updateSheetRow(sheetName, rowIndex, rowData) {
 function clearSheetData(sheetName) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
   if (!sheet) return;
-  
+
   const lastRow = sheet.getLastRow();
   if (lastRow > 1) {
     sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clear();
   }
   SpreadsheetApp.flush();
+}
+
+function toIsoDate(date) {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return Utilities.formatDate(copy, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function parseDateValue(value) {
+  if (!value && value !== 0) return null;
+  if (value instanceof Date) {
+    const d = new Date(value.getTime());
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const d = new Date(value);
+    if (!isNaN(d.getTime())) {
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+  }
+  return null;
+}
+
+function diffInDays(later, earlier) {
+  if (!(later instanceof Date) || !(earlier instanceof Date)) return 0;
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.floor((later.getTime() - earlier.getTime()) / msPerDay);
+}
+
+function ensureNumber(value, fallback) {
+  const num = parseFloat(value);
+  return isNaN(num) ? fallback : num;
 }
 
 // ============================================================================
@@ -854,119 +888,208 @@ function normalizeDif(difPercebida) {
   return (difPercebida - 1) / 4;
 }
 
+function buildReviewItem(alvo, context, settings, dataReferencia, doneMap) {
+  const spacedRow = context.spacedMap[alvo];
+  const statRow = context.statsMap[alvo];
+  const modelRow = context.modelMap[alvo];
+
+  if (!spacedRow && !statRow) {
+    return null;
+  }
+
+  const hoje = new Date(dataReferencia.getTime());
+  hoje.setHours(0, 0, 0, 0);
+
+  let area = '';
+  let subarea = '';
+  if (alvo && alvo.indexOf('::') >= 0) {
+    const partes = alvo.split('::');
+    area = partes[0] || '';
+    subarea = partes[1] || '';
+  } else if (statRow) {
+    area = statRow.area || '';
+    subarea = statRow.subarea || '';
+  }
+
+  let S = null;
+  if (modelRow && modelRow.S_atual !== undefined) {
+    S = ensureNumber(modelRow.S_atual, null);
+  }
+  if (!S && spacedRow && spacedRow.estabilidade !== undefined) {
+    S = ensureNumber(spacedRow.estabilidade, null);
+  }
+  if (!S) {
+    S = settings ? settings.Smin : 1;
+  }
+  S = applyCapS(S, settings.Smin, settings.Smax);
+
+  const ultimaRevisao = spacedRow ? parseDateValue(spacedRow.ultimaRevisao) : null;
+  const ultimaFallback = !ultimaRevisao && statRow ? parseDateValue(statRow.ultimaData) : null;
+  const ultima = ultimaRevisao || ultimaFallback;
+
+  let proxima = spacedRow ? parseDateValue(spacedRow.proximaRevisao) : null;
+  if (!proxima && ultima) {
+    let intervalo = calcOptimalInterval(S, settings.retentionTarget);
+    intervalo = applyCapI(intervalo, settings.Imin, settings.Imax);
+    proxima = new Date(ultima);
+    proxima.setDate(proxima.getDate() + Math.round(intervalo));
+  }
+  if (!proxima) {
+    proxima = new Date(hoje);
+  }
+
+  if (proxima.getTime() > hoje.getTime()) {
+    return null;
+  }
+
+  let tDias = ultima ? Math.max(1, diffInDays(hoje, ultima)) : Math.max(1, diffInDays(hoje, proxima));
+
+  const Rhoje = calcRecall(tDias, S);
+  const basePrioridade = 1 - Rhoje;
+
+  const atrasoDias = Math.max(0, diffInDays(hoje, proxima));
+  const overdue = atrasoDias > 0 ? calcOverdue(atrasoDias, S, settings.alpha, settings.overdueMode) : 0;
+
+  const stat = statRow || {};
+  const flags28d = ensureNumber(stat.flags_28d, 0);
+  const totalBlocos = ensureNumber(stat.total_blocos, 0);
+  const peg = Math.min(1, totalBlocos > 0 ? flags28d / totalBlocos : flags28d / 10);
+
+  const tempoMedio = ensureNumber(stat.tempo_medio, 60);
+  const tempo_rel = Math.min(1, tempoMedio / 120);
+
+  const difMedia = ensureNumber(stat.dif_media, 3);
+  const dif_norm = normalizeDif(difMedia);
+
+  // Calcula prioridade consolidada com pesos (1 − R(t)) + overdue + custos
+  const prioridade = basePrioridade + overdue + settings.wPeg * peg + settings.wTempo * tempo_rel + settings.wDif * dif_norm;
+
+  const mediaQuestoes = totalBlocos > 0
+    ? Math.max(1, Math.round(ensureNumber(stat.questoes, 0) / totalBlocos))
+    : 10;
+  const tempoEstMin = Math.max(1, Math.round((tempoMedio * mediaQuestoes) / 60));
+
+  const feito = !!(doneMap && doneMap[alvo]);
+  const lapses = spacedRow ? ensureNumber(spacedRow.lapses, 0) : 0;
+
+  return {
+    alvo: alvo,
+    area: area || 'Geral',
+    subarea: subarea || 'Geral',
+    prioridade: parseFloat(prioridade.toFixed(3)),
+    S: parseFloat(S.toFixed(2)),
+    Rhoje: parseFloat(Rhoje.toFixed(3)),
+    overdue: parseFloat(overdue.toFixed(3)),
+    tempoEstMin: tempoEstMin,
+    peg: parseFloat(peg.toFixed(3)),
+    tempo_rel: parseFloat(tempo_rel.toFixed(3)),
+    dif_norm: parseFloat(dif_norm.toFixed(3)),
+    feito: feito,
+    proximaRevisao: Utilities.formatDate(proxima, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+    caps: {
+      Smin: settings.Smin,
+      Smax: settings.Smax,
+      Imin: settings.Imin,
+      Imax: settings.Imax
+    },
+    lapses: lapses,
+    tDias: tDias,
+    R_prev: parseFloat(Rhoje.toFixed(4))
+  };
+}
+
 // ============================================================================
 // API: REVISÕES - CRIAR FILA DO DIA
 // ============================================================================
 
 function apiMakeReviewToday() {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const spacedSheet = ss.getSheetByName(SHEET_NAMES.SPACED);
-    const statsSheet = ss.getSheetByName(SHEET_NAMES.STATS);
-    
-    if (!spacedSheet) {
-      return { ok: true, count: 0, data: [] };
-    }
-    
     const settings = apiGetSettings();
-    const spaced = readSheetData(SHEET_NAMES.SPACED);
-    const stats = statsSheet ? readSheetData(SHEET_NAMES.STATS) : [];
-    
-    if (spaced.length === 0) {
-      return { ok: true, count: 0, data: [] };
-    }
-    
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    
-    const reviewList = [];
-    
-    spaced.forEach(item => {
-      try {
-        const alvo = item.alvo;
-        if (!alvo) return;
-        
-        const proximaRevisao = new Date(item.proximaRevisao);
-        proximaRevisao.setHours(0, 0, 0, 0);
-        
-        if (isNaN(proximaRevisao.getTime())) return;
-        
-        if (proximaRevisao <= hoje) {
-          const S = parseFloat(item.estabilidade) || settings.Smin;
-          const ultimaRevisao = item.ultimaRevisao ? new Date(item.ultimaRevisao) : null;
-          
-          let t = 0;
-          if (ultimaRevisao) {
-            ultimaRevisao.setHours(0, 0, 0, 0);
-            t = Math.max(0, Math.floor((hoje - ultimaRevisao) / (1000 * 60 * 60 * 24)));
-          }
-          
-          const R_t = Math.exp(-t / S);
-          const base = 1 - R_t;
-          
-          // Buscar stats
-          const statRow = stats.find(s => `${s.area}::${s.subarea}` === alvo);
-          
-          let peg = 0;
-          let tempo_rel = 0;
-          let dif_norm = 0;
-          
-          if (statRow) {
-            const flags28d = parseFloat(statRow.flags_28d) || 0;
-            peg = Math.min(1, flags28d / 10);
-            
-            const tempoMedio = parseFloat(statRow.tempo_medio) || 60;
-            tempo_rel = Math.min(1, tempoMedio / 120);
-            
-            const difMedia = parseFloat(statRow.dif_media) || 3;
-            dif_norm = (difMedia - 1) / 4;
-          }
-          
-          const atrasoDias = Math.max(0, Math.floor((hoje - proximaRevisao) / (1000 * 60 * 60 * 24)));
-          const overdue = settings.alpha * Math.min(1.5, atrasoDias / S);
-          
-          const prioridade = base + 
-            settings.wPeg * peg + 
-            settings.wTempo * tempo_rel + 
-            settings.wDif * dif_norm + 
-            overdue;
-          
-          reviewList.push({
-            alvo: alvo,
-            prioridade: prioridade,
-            proximaRevisao: Utilities.formatDate(proximaRevisao, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
-            estabilidade: S,
-            feito: 0
-          });
+
+    const spaced = readSheetData(SHEET_NAMES.SPACED);
+    const stats = readSheetData(SHEET_NAMES.STATS);
+    const model = readSheetData(SHEET_NAMES.MODEL);
+    const reviewHoje = readSheetData(SHEET_NAMES.REVER_HOJE);
+
+    const spacedMap = {};
+    spaced.forEach(row => {
+      if (row.alvo) spacedMap[row.alvo] = row;
+    });
+
+    const statsMap = {};
+    stats.forEach(row => {
+      const alvo = `${row.area || ''}::${row.subarea || ''}`;
+      statsMap[alvo] = row;
+    });
+
+    const modelMap = {};
+    model.forEach(row => {
+      if (row.alvo) modelMap[row.alvo] = row;
+    });
+
+    const docProps = PropertiesService.getDocumentProperties();
+    const storedDate = docProps.getProperty('REVER_HOJE_DATE');
+    const todayIso = toIsoDate(hoje);
+
+    const doneMap = {};
+    if (storedDate === todayIso) {
+      reviewHoje.forEach(row => {
+        if (row.alvo) {
+          const value = row.feito;
+          doneMap[row.alvo] = value === 1 || value === true || value === '1';
         }
-      } catch (itemErr) {
-        // Skip item com erro
+      });
+    }
+
+    const context = { spacedMap: spacedMap, statsMap: statsMap, modelMap: modelMap };
+    const candidatos = new Set();
+
+    spaced.forEach(row => {
+      if (row.alvo) {
+        const prox = parseDateValue(row.proximaRevisao);
+        if (prox && prox.getTime() <= hoje.getTime()) {
+          candidatos.add(row.alvo);
+        }
       }
     });
-    
-    reviewList.sort((a, b) => b.prioridade - a.prioridade);
-    
-    // Escrever em REVER_HOJE
-    const reviewSheet = ss.getSheetByName(SHEET_NAMES.REVER_HOJE);
-    if (reviewSheet) {
-      clearSheetData(SHEET_NAMES.REVER_HOJE);
-      
-      reviewList.forEach(item => {
-        const rowData = [
-          item.alvo,
-          item.prioridade,
-          item.proximaRevisao,
-          item.estabilidade,
-          item.feito
-        ];
-        reviewSheet.appendRow(rowData);
-      });
-      
-      SpreadsheetApp.flush();
-    }
-    
-    return { ok: true, count: reviewList.length, data: reviewList };
-    
+
+    reviewHoje.forEach(row => {
+      if (row.alvo) candidatos.add(row.alvo);
+    });
+
+    Object.keys(statsMap).forEach(alvo => candidatos.add(alvo));
+
+    const lista = [];
+    candidatos.forEach(alvo => {
+      const item = buildReviewItem(alvo, context, settings, hoje, doneMap);
+      if (item) {
+        lista.push(item);
+      }
+    });
+
+    lista.sort((a, b) => b.prioridade - a.prioridade);
+
+    const reviewSheet = getOrCreateSheet(SHEET_NAMES.REVER_HOJE, HEADERS.REVER_HOJE);
+    clearSheetData(SHEET_NAMES.REVER_HOJE);
+
+    // Reconstrói REVER_HOJE a partir de SPACED mantendo marcações do dia
+    lista.forEach(item => {
+      const rowData = [
+        item.alvo,
+        item.prioridade,
+        item.proximaRevisao,
+        item.S,
+        item.feito ? 1 : 0
+      ];
+      reviewSheet.appendRow(rowData);
+    });
+
+    SpreadsheetApp.flush();
+    docProps.setProperty('REVER_HOJE_DATE', todayIso);
+
+    return { ok: true, date: todayIso, items: lista };
   } catch (e) {
     return { ok: false, error: e.toString() };
   }
@@ -1009,33 +1132,364 @@ function debugSpaced() {
 
 function apiGetDayDetails(dateISO) {
   try {
-    const reviewToday = readSheetData(SHEET_NAMES.REVER_HOJE);
-    return { ok: true, data: reviewToday };
+    const settings = apiGetSettings();
+    const referencia = dateISO ? parseDateValue(`${dateISO}T00:00:00`) : new Date();
+    if (!referencia) {
+      return { ok: false, error: 'Data inválida' };
+    }
+    referencia.setHours(0, 0, 0, 0);
+
+    const spaced = readSheetData(SHEET_NAMES.SPACED);
+    const stats = readSheetData(SHEET_NAMES.STATS);
+    const model = readSheetData(SHEET_NAMES.MODEL);
+    const reviewHoje = readSheetData(SHEET_NAMES.REVER_HOJE);
+
+    const spacedMap = {};
+    spaced.forEach(row => {
+      if (row.alvo) spacedMap[row.alvo] = row;
+    });
+
+    const statsMap = {};
+    stats.forEach(row => {
+      const alvo = `${row.area || ''}::${row.subarea || ''}`;
+      statsMap[alvo] = row;
+    });
+
+    const modelMap = {};
+    model.forEach(row => {
+      if (row.alvo) modelMap[row.alvo] = row;
+    });
+
+    const docProps = PropertiesService.getDocumentProperties();
+    const storedDate = docProps.getProperty('REVER_HOJE_DATE');
+    const dateIso = toIsoDate(referencia);
+
+    const doneMap = {};
+    if (storedDate === dateIso) {
+      reviewHoje.forEach(row => {
+        if (row.alvo) {
+          const value = row.feito;
+          doneMap[row.alvo] = value === 1 || value === true || value === '1';
+        }
+      });
+    }
+
+    const context = { spacedMap: spacedMap, statsMap: statsMap, modelMap: modelMap };
+    const candidatos = new Set();
+    spaced.forEach(row => {
+      if (row.alvo) {
+        const prox = parseDateValue(row.proximaRevisao);
+        if (prox && prox.getTime() <= referencia.getTime()) {
+          candidatos.add(row.alvo);
+        }
+      }
+    });
+    reviewHoje.forEach(row => {
+      if (row.alvo) candidatos.add(row.alvo);
+    });
+    Object.keys(statsMap).forEach(alvo => candidatos.add(alvo));
+
+    const lista = [];
+    candidatos.forEach(alvo => {
+      const item = buildReviewItem(alvo, context, settings, referencia, doneMap);
+      if (item) lista.push(item);
+    });
+
+    lista.sort((a, b) => b.prioridade - a.prioridade);
+
+    const pendentes = lista.filter(item => !item.feito);
+    const tempoTotal = pendentes.reduce((acc, item) => acc + (item.tempoEstMin || 0), 0);
+    const top3 = lista.slice(0, 3).map(item => ({ alvo: item.alvo, prioridade: item.prioridade }));
+
+    return {
+      ok: true,
+      data: {
+        date: dateIso,
+        total: lista.length,
+        pendentes: pendentes.length,
+        tempoTotalMin: tempoTotal,
+        top: top3
+      }
+    };
   } catch (e) {
     return { ok: false, error: e.toString() };
   }
 }
 
-function apiApplyReviewDone(alvos) {
+function apiApplyReviewDone(payload) {
+  const lock = LockService.getScriptLock();
+  lock.tryLock(30000);
+
   try {
-    const lock = LockService.getScriptLock();
-    lock.tryLock(10000);
-    
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.REVER_HOJE);
-    const data = readSheetData(SHEET_NAMES.REVER_HOJE);
-    
-    data.forEach((row, idx) => {
-      if (alvos.includes(row.alvo)) {
-        sheet.getRange(idx + 2, 5).setValue(1); // coluna 'feito'
+    if (!payload || !payload.alvo) {
+      throw new Error('Payload inválido para aplicar revisão');
+    }
+
+    const alvo = payload.alvo;
+    const undo = payload.undo === true;
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const reviewSheet = getOrCreateSheet(SHEET_NAMES.REVER_HOJE, HEADERS.REVER_HOJE);
+    const reviewData = readSheetData(SHEET_NAMES.REVER_HOJE);
+    const reviewIdx = reviewData.findIndex(row => row.alvo === alvo);
+
+    if (reviewIdx === -1) {
+      throw new Error('Alvo não encontrado na fila do dia');
+    }
+
+    if (undo) {
+      // Marca como não feito sem alterar demais dados
+      reviewSheet.getRange(reviewIdx + 2, 5).setValue(0); // coluna feito
+      SpreadsheetApp.flush();
+      return { ok: true, alvo: alvo, undone: true, recomputeHint: false };
+    }
+
+    const settings = apiGetSettings();
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const totalQuestoes = Math.max(1, parseInt(payload.total, 10) || 0);
+    const acertos = Math.min(totalQuestoes, Math.max(0, parseInt(payload.acertos, 10)));
+    const tempoSeg = Math.max(10, parseFloat(payload.tempoSeg) || totalQuestoes * 60);
+    const difPercebida = Math.min(5, Math.max(1, parseInt(payload.difPercebida, 10) || 3));
+    const flags = payload.flags || '';
+    const obs = payload.obs || '';
+
+    const spacedData = readSheetData(SHEET_NAMES.SPACED);
+    const statsData = readSheetData(SHEET_NAMES.STATS);
+    const modelData = readSheetData(SHEET_NAMES.MODEL);
+
+    const spacedMap = {};
+    spacedData.forEach((row, idx) => {
+      if (row.alvo) {
+        spacedMap[row.alvo] = { row: row, idx: idx };
       }
     });
-    
+
+    const statsMap = {};
+    statsData.forEach((row, idx) => {
+      const key = `${row.area || ''}::${row.subarea || ''}`;
+      statsMap[key] = { row: row, idx: idx };
+    });
+
+    const modelMap = {};
+    modelData.forEach((row, idx) => {
+      if (row.alvo) {
+        modelMap[row.alvo] = { row: row, idx: idx };
+      }
+    });
+
+    const [areaRaw, subRaw] = alvo.split('::');
+    const area = areaRaw || 'Geral';
+    const subarea = subRaw || 'Geral';
+
+    const statsSheet = getOrCreateSheet(SHEET_NAMES.STATS, HEADERS.STATS);
+    let statBundle = statsMap[alvo];
+    if (!statBundle) {
+      const novoStat = [area, subarea, 0, 0, 0, 0, 0, 0, 60, 0, 3, hoje];
+      writeSheetRow(SHEET_NAMES.STATS, novoStat);
+      statsData.push({
+        area: area,
+        subarea: subarea,
+        total_blocos: 0,
+        questoes: 0,
+        acertos: 0,
+        acerto_vida: 0,
+        acerto_28d: 0,
+        acerto_7d: 0,
+        tempo_medio: 60,
+        flags_28d: 0,
+        dif_media: 3,
+        ultimaData: hoje
+      });
+      statBundle = { row: statsData[statsData.length - 1], idx: statsData.length - 1 };
+      statsMap[alvo] = statBundle;
+    }
+
+    const spacedSheet = getOrCreateSheet(SHEET_NAMES.SPACED, HEADERS.SPACED);
+    let spacedBundle = spacedMap[alvo];
+    if (!spacedBundle) {
+      const novoSpaced = [alvo, hoje, settings.Smin, difPercebida, hoje, 0, 0];
+      writeSheetRow(SHEET_NAMES.SPACED, novoSpaced);
+      spacedData.push({
+        alvo: alvo,
+        ultimaRevisao: hoje,
+        estabilidade: settings.Smin,
+        dificuldade_media: difPercebida,
+        proximaRevisao: hoje,
+        lapses: 0,
+        prioridade: 0
+      });
+      spacedBundle = { row: spacedData[spacedData.length - 1], idx: spacedData.length - 1 };
+      spacedMap[alvo] = spacedBundle;
+    }
+
+    const modelSheet = getOrCreateSheet(SHEET_NAMES.MODEL, HEADERS.MODEL);
+    let modelBundle = modelMap[alvo];
+    if (!modelBundle) {
+      const theta0 = Math.log(settings.Smin);
+      const novoModel = [alvo, theta0, 0, 0, settings.Smin, hoje];
+      writeSheetRow(SHEET_NAMES.MODEL, novoModel);
+      modelData.push({
+        alvo: alvo,
+        theta0: theta0,
+        theta1: 0,
+        theta2: 0,
+        S_atual: settings.Smin,
+        ultima_atualizacao: hoje
+      });
+      modelBundle = { row: modelData[modelData.length - 1], idx: modelData.length - 1 };
+      modelMap[alvo] = modelBundle;
+    }
+
+    const spacedRow = spacedBundle.row;
+    const statRow = statBundle.row;
+    const modelRow = modelBundle.row;
+
+    const ultimaRevisao = parseDateValue(spacedRow.ultimaRevisao) || parseDateValue(statRow.ultimaData) || hoje;
+    let tDias = Math.max(1, diffInDays(hoje, ultimaRevisao));
+
+    let S_atual = ensureNumber(modelRow.S_atual, settings.Smin);
+    S_atual = applyCapS(S_atual, settings.Smin, settings.Smax);
+    const pPrev = calcRecall(tDias, S_atual);
+
+    const reviewLogRow = [
+      hoje,
+      alvo,
+      tDias,
+      settings.retentionTarget,
+      pPrev,
+      0,
+      tempoSeg,
+      difPercebida,
+      flags,
+      obs
+    ];
+
+    const competencia = ensureNumber(statRow.acerto_28d, ensureNumber(statRow.acerto_vida, 0.5));
+    const difNorm = normalizeDif(difPercebida);
+
+    const theta0 = ensureNumber(modelRow.theta0, Math.log(settings.Smin));
+    const theta1 = ensureNumber(modelRow.theta1, 0);
+    const theta2 = ensureNumber(modelRow.theta2, 0);
+    const x = [1, competencia, difNorm];
+
+    const S_hat = calcStability(theta0, theta1, theta2, competencia, difNorm);
+    const S_obs = calcSobs(Math.max(1, tDias), settings.retentionTarget);
+
+    const lnS_obs = Math.log(S_obs);
+    const lnS_hat = Math.log(S_hat);
+    const erro = lnS_obs - lnS_hat;
+
+    const thetas = [theta0, theta1, theta2];
+    for (let i = 0; i < thetas.length; i++) {
+      thetas[i] = (1 - settings.regLambda) * thetas[i] + settings.lrEta * erro * x[i];
+    }
+
+    let S_novo = applyCapS(S_obs, settings.Smin, settings.Smax);
+
+    const accuracy = acertos / totalQuestoes;
+    const acertou = accuracy >= 0.7;
+    reviewLogRow[5] = acertou ? 1 : 0;
+    if (!acertou) {
+      S_novo = Math.max(settings.Smin, S_novo * 0.7);
+    }
+
+    writeSheetRow(SHEET_NAMES.REVISAO_LOG, reviewLogRow);
+
+    let intervalo = calcOptimalInterval(S_novo, settings.retentionTarget);
+    intervalo = applyCapI(intervalo, settings.Imin, settings.Imax);
+
+    const acerto7d = ensureNumber(statRow.acerto_7d, ensureNumber(statRow.acerto_vida, 0.5));
+    if (acerto7d < 0.5) {
+      intervalo = Math.max(settings.Imin, intervalo * 0.7);
+    }
+    if (!acertou) {
+      intervalo = Math.max(settings.Imin, intervalo * 0.5);
+    }
+
+    const proximaRevisao = new Date(hoje);
+    proximaRevisao.setDate(proximaRevisao.getDate() + Math.max(1, Math.round(intervalo)));
+
+    const lapsesAtual = ensureNumber(spacedRow.lapses, 0);
+    const lapsesNovos = acertou ? lapsesAtual : lapsesAtual + 1;
+
+    const tempoPrevTotal = ensureNumber(statRow.tempo_medio, 60) * ensureNumber(statRow.questoes, 0);
+    const questoesPrev = ensureNumber(statRow.questoes, 0);
+    const acertosPrev = ensureNumber(statRow.acertos, 0);
+    const totalBlocosPrev = ensureNumber(statRow.total_blocos, 0);
+    const difMediaPrev = ensureNumber(statRow.dif_media, 3);
+    const flagsPrev = ensureNumber(statRow.flags_28d, 0);
+    const questoes28Prev = ensureNumber(statRow.questoes_28d, 0);
+    const acertos28Prev = ensureNumber(statRow.acertos_28d, 0);
+    const questoes7Prev = ensureNumber(statRow.questoes_7d, 0);
+    const acertos7Prev = ensureNumber(statRow.acertos_7d, 0);
+
+    const totalBlocosNovo = totalBlocosPrev + 1;
+    const questoesNovo = questoesPrev + totalQuestoes;
+    const acertosNovo = acertosPrev + acertos;
+    const questoes28Novo = questoes28Prev + totalQuestoes;
+    const acertos28Novo = acertos28Prev + acertos;
+    const questoes7Novo = questoes7Prev + totalQuestoes;
+    const acertos7Novo = acertos7Prev + acertos;
+
+    const tempoMedioNovo = (tempoPrevTotal + tempoSeg) / Math.max(1, questoesNovo);
+    const difMediaNova = ((difMediaPrev * totalBlocosPrev) + difPercebida) / Math.max(1, totalBlocosNovo);
+    const flagsNovo = flagsPrev + (flags ? 1 : 0);
+
+    const acertoVida = questoesNovo > 0 ? acertosNovo / questoesNovo : 0;
+    const acerto28 = questoes28Novo > 0 ? acertos28Novo / questoes28Novo : acertoVida;
+    const acerto7 = questoes7Novo > 0 ? acertos7Novo / questoes7Novo : acerto28;
+
+    const updatedStatRow = [
+      area,
+      subarea,
+      totalBlocosNovo,
+      questoesNovo,
+      acertosNovo,
+      acertoVida,
+      acerto28,
+      acerto7,
+      tempoMedioNovo,
+      flagsNovo,
+      difMediaNova,
+      hoje
+    ];
+    updateSheetRow(SHEET_NAMES.STATS, statBundle.idx, updatedStatRow);
+
+    const updatedSpacedRow = [
+      alvo,
+      hoje,
+      S_novo,
+      difMediaNova,
+      proximaRevisao,
+      lapsesNovos,
+      spacedRow.prioridade || 0
+    ];
+    updateSheetRow(SHEET_NAMES.SPACED, spacedBundle.idx, updatedSpacedRow);
+
+    const updatedModelRow = [
+      alvo,
+      thetas[0],
+      thetas[1],
+      thetas[2],
+      S_novo,
+      hoje
+    ];
+    updateSheetRow(SHEET_NAMES.MODEL, modelBundle.idx, updatedModelRow);
+
+    // Marca feito na planilha de hoje
+    reviewSheet.getRange(reviewIdx + 2, 5).setValue(1);
     SpreadsheetApp.flush();
-    lock.releaseLock();
-    
-    return { ok: true };
+
+    return { ok: true, alvo: alvo, recomputeHint: true };
   } catch (e) {
     return { ok: false, error: e.toString() };
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (err) {
+      // Ignora erro ao liberar lock
+    }
   }
 }
 
