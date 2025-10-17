@@ -6920,14 +6920,17 @@
           if (!result || result.ok === false) {
             examsState.sessions = [];
             renderExamSessionsTable();
+            hydrateExamPlanFromState({ silent: true });
             return;
           }
           examsState.sessions = Array.isArray(result.sessions) ? result.sessions : [];
           renderExamSessionsTable();
+          hydrateExamPlanFromState({ silent: true });
         })
         .withFailureHandler(function() {
           examsState.sessions = [];
           renderExamSessionsTable();
+          hydrateExamPlanFromState({ silent: true });
         })
         .apiGetSessions({ examId });
     }
@@ -6949,6 +6952,183 @@
           renderExamReviewsTable();
         })
         .apiGetReviews({ examId });
+    }
+
+    function inferHydratedStage(topicEntry) {
+      const notesText = (topicEntry.notesCorpus || '').toLowerCase();
+      if (topicEntry.hasReading) {
+        return { status: 'NOVO', stage: 'D1' };
+      }
+      if (notesText.includes('conteúdo novo') || notesText.includes('d1')) {
+        return { status: 'NOVO', stage: 'D1' };
+      }
+      const hasMaintenance = topicEntry.modes && topicEntry.modes.has('maintenance');
+      if (notesText.includes('estágio s1') || notesText.includes('pós-d1')) {
+        return { status: 'HISTORICO', stage: 'S1' };
+      }
+      if (notesText.includes('estágio s3') || notesText.includes('manuten') || hasMaintenance) {
+        return { status: 'HISTORICO', stage: 'S3' };
+      }
+      if (notesText.includes('estágio s2') || notesText.includes('consolida')) {
+        return { status: 'HISTORICO', stage: 'S2' };
+      }
+      return { status: 'HISTORICO', stage: hasMaintenance ? 'S3' : 'S2' };
+    }
+
+    function hydrateExamPlanFromState(options = {}) {
+      const examId = examsState.selectedId;
+      if (!examId) return;
+      const sessions = (examsState.sessions || []).filter(session => {
+        if (!session) return false;
+        if (!session.examId) return true;
+        return session.examId === examId;
+      });
+
+      if (sessions.length === 0) {
+        if (examsState.plan && examsState.plan.examId === examId && examsState.plan.source === 'hydrated') {
+          examsState.plan = null;
+          renderExamPlan(null);
+        }
+        return;
+      }
+
+      const dayMap = new Map();
+      sessions.forEach(session => {
+        if (!session || !session.day) return;
+        const dayKey = session.day;
+        if (!dayMap.has(dayKey)) {
+          const parsedDate = parseAppDate(dayKey);
+          dayMap.set(dayKey, {
+            day: dayKey,
+            date: parsedDate instanceof Date && !isNaN(parsedDate) ? parsedDate : null,
+            totalMinutes: 0,
+            totalDelta: 0,
+            topicMap: new Map()
+          });
+        }
+        const entry = dayMap.get(dayKey);
+        const topicKey = (session.topic || '').trim() || 'Conteúdo';
+        if (!entry.topicMap.has(topicKey)) {
+          entry.topicMap.set(topicKey, {
+            topic: topicKey,
+            area: getAreaFromAlvo(topicKey),
+            tasks: [],
+            totalMinutes: 0,
+            totalDelta: 0,
+            notesCorpus: '',
+            modes: new Set(),
+            hasReading: false
+          });
+        }
+        const topicEntry = entry.topicMap.get(topicKey);
+        const minutes = isFinite(Number(session.minutes)) ? Math.max(0, Number(session.minutes)) : 0;
+        const deltaValue = isFinite(Number(session.deltaRpp)) ? Math.max(0, Number(session.deltaRpp)) : 0;
+        topicEntry.tasks.push({
+          technique: session.technique || 'Sessão',
+          minutes,
+          notes: session.notes || '',
+          deltaRpp: deltaValue,
+          reason: ''
+        });
+        topicEntry.totalMinutes += minutes;
+        topicEntry.totalDelta += deltaValue;
+        topicEntry.notesCorpus += ` ${(session.notes || '')}`;
+        if ((session.technique || '').toUpperCase() === 'LEITURA') {
+          topicEntry.hasReading = true;
+        }
+        const modeLabel = session.mode ? session.mode.toString().toLowerCase() : '';
+        if (modeLabel) {
+          topicEntry.modes.add(modeLabel);
+        }
+        entry.totalMinutes += minutes;
+        entry.totalDelta += deltaValue;
+      });
+
+      const daily = Array.from(dayMap.values()).map(entry => {
+        const topics = Array.from(entry.topicMap.values()).map(topicEntry => {
+          const inferred = inferHydratedStage(topicEntry);
+          return {
+            topic: topicEntry.topic,
+            area: topicEntry.area,
+            stage: inferred.stage,
+            status: inferred.status,
+            totalMinutes: Math.round(topicEntry.totalMinutes),
+            deltaRpp: Math.round(topicEntry.totalDelta * 10) / 10,
+            tasks: topicEntry.tasks.map(task => ({
+              technique: task.technique,
+              minutes: Math.round(task.minutes),
+              notes: task.notes,
+              deltaRpp: Math.round(task.deltaRpp * 10) / 10,
+              reason: task.reason || ''
+            }))
+          };
+        }).sort((a, b) => {
+          if (b.totalMinutes !== a.totalMinutes) {
+            return b.totalMinutes - a.totalMinutes;
+          }
+          return (a.topic || '').localeCompare(b.topic || '');
+        });
+
+        const dayIso = entry.date instanceof Date && !isNaN(entry.date)
+          ? formatISODate(entry.date)
+          : '';
+
+        return {
+          day: entry.day,
+          dayIso,
+          totalMinutes: Math.round(entry.totalMinutes),
+          totalDeltaRpp: Math.round(entry.totalDelta * 10) / 10,
+          topics
+        };
+      }).sort((a, b) => {
+        const dateA = parseAppDate(a.day);
+        const dateB = parseAppDate(b.day);
+        if (dateA && dateB && dateA.getTime() !== dateB.getTime()) {
+          return dateA - dateB;
+        }
+        return (a.day || '').localeCompare(b.day || '');
+      });
+
+      const totalMinutesAvg = daily.length > 0
+        ? daily.reduce((sum, item) => sum + (item.totalMinutes || 0), 0) / daily.length
+        : 0;
+      const totalDelta = daily.reduce((sum, item) => sum + (item.totalDeltaRpp || 0), 0);
+
+      const areaMap = {};
+      daily.forEach(day => {
+        (day.topics || []).forEach(topic => {
+          const areaLabel = topic.area || getAreaFromAlvo(topic.topic);
+          if (!areaMap[areaLabel]) {
+            areaMap[areaLabel] = { allocMin: 0, deltaRpp: 0 };
+          }
+          areaMap[areaLabel].allocMin += topic.totalMinutes || 0;
+          areaMap[areaLabel].deltaRpp += topic.deltaRpp || 0;
+        });
+      });
+
+      const areaList = Object.keys(areaMap).map(area => ({
+        area,
+        allocMin: Math.round(areaMap[area].allocMin),
+        deltaRpp: Math.round(areaMap[area].deltaRpp * 10) / 10
+      })).sort((a, b) => b.allocMin - a.allocMin);
+
+      const plan = {
+        examId,
+        source: 'hydrated',
+        summary: {
+          totalMinutes: Math.round(totalMinutesAvg),
+          totalDelta: Math.round(totalDelta * 10) / 10,
+          areas: areaList
+        },
+        days: daily.length,
+        daily
+      };
+
+      examsState.plan = plan;
+      if (!options.silent) {
+        toast('Plano recuperado do histórico salvo.', 'info');
+      }
+      renderExamPlan(plan);
     }
 
     function renderExamReviewsTable() {

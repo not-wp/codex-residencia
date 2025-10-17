@@ -5536,23 +5536,24 @@ function computeStudyGuidePlanV2(alvoRaw, budgetMin, prefs, settings, data, logR
 
   const modelNEff = modelRow && modelRow.n_eff !== undefined ? parseFloat(modelRow.n_eff) : NaN;
   const statsHasEvidence = !!statsRow && (
-    isFinite(parseFloat(statsRow.total_blocos)) && parseFloat(statsRow.total_blocos) > 0 ||
-    isFinite(parseFloat(statsRow.questoes)) && parseFloat(statsRow.questoes) > 0 ||
-    isFinite(parseFloat(statsRow.acertos)) && parseFloat(statsRow.acertos) > 0 ||
-    isFinite(parseFloat(statsRow.acerto_vida)) && parseFloat(statsRow.acerto_vida) > 0 ||
-    isFinite(parseFloat(statsRow.acerto_28d)) && parseFloat(statsRow.acerto_28d) > 0 ||
-    isFinite(parseFloat(statsRow.acerto_7d)) && parseFloat(statsRow.acerto_7d) > 0
+    (isFinite(parseFloat(statsRow.total_blocos)) && parseFloat(statsRow.total_blocos) > 0) ||
+    (isFinite(parseFloat(statsRow.questoes)) && parseFloat(statsRow.questoes) > 0) ||
+    (isFinite(parseFloat(statsRow.acertos)) && parseFloat(statsRow.acertos) > 0) ||
+    (isFinite(parseFloat(statsRow.acerto_vida)) && parseFloat(statsRow.acerto_vida) > 0) ||
+    (isFinite(parseFloat(statsRow.acerto_28d)) && parseFloat(statsRow.acerto_28d) > 0) ||
+    (isFinite(parseFloat(statsRow.acerto_7d)) && parseFloat(statsRow.acerto_7d) > 0)
   );
-  const spacedHasEvidence = !!spacedRow && (
-    (spacedRow.ultimaRevisao && parseSheetDate(spacedRow.ultimaRevisao)) ||
-    (spacedRow.proximaRevisao && parseSheetDate(spacedRow.proximaRevisao)) ||
-    (isFinite(parseFloat(spacedRow.estabilidade)) && parseFloat(spacedRow.estabilidade) > 0) ||
-    (isFinite(parseFloat(spacedRow.lapses)) && parseFloat(spacedRow.lapses) > 0)
+  const spacedUltimaDate = spacedRow && spacedRow.ultimaRevisao ? parseSheetDate(spacedRow.ultimaRevisao) : null;
+  const spacedLapsesValue = spacedRow && spacedRow.lapses !== undefined ? parseFloat(spacedRow.lapses) : NaN;
+  const spacedHasEvidence = !!(
+    (spacedUltimaDate instanceof Date && !isNaN(spacedUltimaDate)) ||
+    (isFinite(spacedLapsesValue) && spacedLapsesValue > 0)
   );
-  const modelHasEvidence = !!modelRow && (
-    (isFinite(parseFloat(modelRow.S_atual)) && parseFloat(modelRow.S_atual) > 0) ||
-    (isFinite(parseFloat(modelRow.n_eff)) && parseFloat(modelRow.n_eff) > 0) ||
-    (isFinite(parseFloat(modelRow.theta0)) || isFinite(parseFloat(modelRow.theta1)) || isFinite(parseFloat(modelRow.theta2)))
+  const modelNEffValue = modelRow && modelRow.n_eff !== undefined ? parseFloat(modelRow.n_eff) : NaN;
+  const modelUpdated = modelRow && modelRow.ultima_atualizacao ? parseSheetDate(modelRow.ultima_atualizacao) : null;
+  const modelHasEvidence = !!(
+    (isFinite(modelNEffValue) && modelNEffValue > 0) ||
+    (modelUpdated instanceof Date && !isNaN(modelUpdated))
   );
 
   const hasSheetHistory = statsHasEvidence || spacedHasEvidence || modelHasEvidence;
@@ -5837,10 +5838,15 @@ function gatherGuideHistoryInfo(alvoKey, area, subarea, spacedRow, logRows, revi
   };
 
   if (spacedRow) {
-    info.hasHistory = true;
-    if (spacedRow.ultimaRevisao) {
-      const ultima = parseSheetDate(spacedRow.ultimaRevisao);
+    const ultima = spacedRow.ultimaRevisao ? parseSheetDate(spacedRow.ultimaRevisao) : null;
+    const lapsValue = spacedRow.lapses !== undefined ? parseFloat(spacedRow.lapses) : NaN;
+    const spacedEvidence = (ultima instanceof Date && !isNaN(ultima)) || (isFinite(lapsValue) && lapsValue > 0);
+    if (spacedEvidence) {
+      info.hasHistory = true;
       if (ultima) updateDate(ultima);
+      if (isFinite(lapsValue) && lapsValue > 0) {
+        info.totalCount = Math.max(info.totalCount, Math.round(lapsValue));
+      }
     }
   }
 
