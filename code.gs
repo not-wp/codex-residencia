@@ -5327,3 +5327,12 @@ function apiABReport() {
     return { ok: false, error: e.toString() };
   }
 }
+/** --------- STUBS: Exam/Provas (removidos) --------- **/
+function apiExamGuidePlan(params){ return {ok:false, reason:"exams_disabled"}; }
+function apiReviewPlanPreExam(budgetMin){ return {ok:false, reason:"exams_disabled"}; }
+function apiGetProvas(){ return {ok:true, items:[]}; }
+function apiCreateProva(payload){ return {ok:false, reason:"exams_disabled"}; }
+function apiUpdateProva(payload){ return {ok:false, reason:"exams_disabled"}; }
+function apiDeleteProva(id){ return {ok:false, reason:"exams_disabled"}; }
+function apiAttachTargetsToExam(payload){ return {ok:false, reason:"exams_disabled"}; }
+/** ----------------------------------------------- **/

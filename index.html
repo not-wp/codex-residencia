@@ -5807,5 +5807,145 @@
       toast('Erro: ' + (error.message || error.toString()), 'error');
     }
   </script>
+  <script>
+  (function(){
+    // Auditoria de erros para achar onde está quebrando
+    window.onerror = function(msg, src, line, col, err){
+      console.log('[AppGuard] JS error:', msg, 'at', src, line + ':' + col);
+      try {
+        if (typeof toast === 'function') {
+          toast('Ops: ' + msg);
+        }
+      } catch (e) {}
+    };
+
+    // Helper seguro para bind de eventos
+    function onSafe(selector, event, handler){
+      var el = document.querySelector(selector);
+      if (!el) {
+        console.log('[AppGuard] missing:', selector);
+        return;
+      }
+      el.addEventListener(event, handler);
+    }
+
+    // Guardas para google.script.run
+    window.safeRun = function(){
+      if (window.google && google.script && google.script.run) {
+        return google.script.run;
+      }
+      console.log('[AppGuard] google.script.run indisponível');
+      var proxy = {};
+      proxy.withSuccessHandler = function(){ return proxy; };
+      proxy.withFailureHandler = function(){ return proxy; };
+      return new Proxy(proxy, {
+        get: function(target, prop){
+          if (prop in target) {
+            return target[prop];
+          }
+          return function(){
+            console.log('[AppGuard] chamada ignorada:', prop);
+            return proxy;
+          };
+        }
+      });
+    };
+
+    window.safeChartsLoaded = function(cb){
+      if (window.google && google.charts && google.visualization) {
+        try {
+          cb();
+        } catch (e) {
+          console.log('[ChartsErr]', e);
+        }
+        return;
+      }
+      try {
+        if (window.google && google.charts) {
+          google.charts.load('current', { packages: ['corechart', 'table'] });
+          google.charts.setOnLoadCallback(function(){
+            try {
+              cb();
+            } catch (e) {
+              console.log(e);
+            }
+          });
+        }
+      } catch (e) {
+        console.log('[ChartsLoadErr]', e);
+      }
+    };
+
+    ['#btnProvas', '#btnGerarProva', "[data-action='open-provas']"].forEach(function(sel){
+      var el = document.querySelector(sel);
+      if (el) {
+        el.style.display = 'none';
+        el.disabled = true;
+      }
+    });
+
+    if (!window.StudyChecklist) {
+      window.StudyChecklist = {
+        toggle: function(id){
+          try {
+            var key = 'studyChecklist';
+            var state = JSON.parse(localStorage.getItem(key) || '{}');
+            state[id] = !state[id];
+            localStorage.setItem(key, JSON.stringify(state));
+            var row = document.querySelector('[data-check="' + id + '"]');
+            if (row) {
+              row.classList.toggle('done', !!state[id]);
+            }
+          } catch (e) {
+            console.log('[ChecklistErr]', e);
+          }
+        },
+        get: function(id){
+          try {
+            var state = JSON.parse(localStorage.getItem('studyChecklist') || '{}');
+            return !!state[id];
+          } catch (e) {
+            return false;
+          }
+        }
+      };
+    }
+
+    document.addEventListener('DOMContentLoaded', function(){
+      if (location.hash === '#provas') {
+        location.hash = '#revisoes';
+      }
+
+      try {
+        if (typeof AppInit === 'function') {
+          AppInit();
+        } else if (window.safeRun) {
+          var runner = safeRun();
+          if (runner && typeof runner.apiInit === 'function') {
+            runner.apiInit();
+          }
+        }
+      } catch (e) {
+        console.log('[InitErr]', e);
+      }
+
+      if (typeof drawDashboardCharts !== 'function') {
+        window.drawDashboardCharts = function(){
+          window.safeChartsLoaded(function(){
+            var container = document.getElementById('chart_acertos_area');
+            if (!container) return;
+            var data = new google.visualization.DataTable();
+            data.addColumn('string', 'Área');
+            data.addColumn('number', 'Acertos');
+            data.addRows([[ 'Sem dados', 0 ]]);
+            var chart = new google.visualization.ColumnChart(container);
+            chart.draw(data, { title: 'Acertos por área (placeholder)' });
+          });
+        };
+        setTimeout(drawDashboardCharts, 600);
+      }
+    });
+  })();
+  </script>
 </body>
 </html>
