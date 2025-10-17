@@ -336,6 +336,171 @@
       color: var(--warning);
     }
 
+    /* Revisões */
+    .review-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .review-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .review-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    .review-card {
+      background: var(--bg-tertiary);
+      padding: 16px;
+      border-radius: 10px;
+      border-left: 4px solid var(--accent);
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.3);
+    }
+
+    .review-card h3 {
+      margin: 0;
+      font-size: 1rem;
+      color: var(--text-secondary);
+    }
+
+    .review-card .value {
+      font-size: 2rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-top: 10px;
+    }
+
+    .review-card .label {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      margin-top: 6px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+      border-radius: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+    }
+
+    .review-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+    }
+
+    .review-table tbody tr.done {
+      background: rgba(34, 197, 94, 0.18);
+    }
+
+    .review-table tbody tr.done td {
+      color: #86efac;
+    }
+
+    .review-table tbody tr.done td.actions .btn-success {
+      display: none;
+    }
+
+    .review-table tbody tr td.actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .table-empty {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.18);
+      color: #cbd5e1;
+      font-size: 0.75rem;
+      margin-top: 6px;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(34, 197, 94, 0.18);
+      color: #22c55e;
+      font-size: 0.75rem;
+    }
+
+    .link-button {
+      background: none;
+      border: none;
+      color: var(--accent);
+      cursor: pointer;
+      font-weight: 500;
+      padding: 0;
+    }
+
+    .link-button:hover {
+      text-decoration: underline;
+    }
+
+    .modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15, 23, 42, 0.8);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10001;
+      padding: 20px;
+    }
+
+    .modal.active {
+      display: flex;
+    }
+
+    .modal-card {
+      background: var(--bg-secondary);
+      padding: 24px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.65);
+    }
+
+    .modal-card h3 {
+      margin-top: 0;
+      color: var(--accent);
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .review-chart {
+      min-height: 240px;
+    }
+
+    .highlight-row {
+      box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4);
+    }
+
     /* Settings Grid */
     .settings-grid {
       display: grid;
@@ -402,10 +567,10 @@
       <div class="header-content">
         <h1>📚 Sistema de Revisão Espaçada - Residência Médica</h1>
         <div class="tabs">
-          <button class="tab active" onclick="switchPage('dashboard')">Dashboard</button>
-          <button class="tab" onclick="switchPage('lancar')">Lançar Bloco</button>
-          <button class="tab" onclick="switchPage('revisoes')">Revisões</button>
-          <button class="tab" onclick="switchPage('ajustes')">Ajustes</button>
+          <button class="tab active" data-page="dashboard" onclick="switchPage('dashboard', this)">Dashboard</button>
+          <button class="tab" data-page="lancar" onclick="switchPage('lancar', this)">Lançar Bloco</button>
+          <button class="tab" data-page="revisoes" onclick="switchPage('revisoes', this)">Revisões</button>
+          <button class="tab" data-page="ajustes" onclick="switchPage('ajustes', this)">Ajustes</button>
         </div>
       </div>
     </header>
@@ -508,66 +673,65 @@
     <!-- REVISÕES -->
     <div id="revisoes" class="page">
       <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-          <h2>Fila de Revisões de Hoje</h2>
-          <button class="btn btn-secondary" onclick="gerarFilaHoje()">🔄 Gerar Fila</button>
+        <div class="review-header">
+          <div>
+            <h2>Revisões do Dia</h2>
+            <p style="color: var(--text-secondary); margin: 6px 0 0; font-size: 0.9rem;">Monte a fila priorizada, conclua revisões e acompanhe o ritmo do dia.</p>
+          </div>
+          <div class="review-actions">
+            <button class="btn btn-secondary" onclick="abrirCalendarioRevisoes()">📅 Ver calendário</button>
+            <button class="btn btn-primary" onclick="gerarFilaHoje()">🔄 Gerar lista</button>
+          </div>
         </div>
-        <div style="overflow-x: auto;">
-          <table id="filaTable">
+
+        <div class="review-summary" id="resumoRevisoes">
+          <div class="review-card">
+            <h3>Pendências do dia</h3>
+            <div class="value" id="resumoPendencias">-</div>
+            <div class="label">Itens aguardando revisão</div>
+          </div>
+          <div class="review-card">
+            <h3>Tempo estimado</h3>
+            <div class="value" id="resumoTempo">-</div>
+            <div class="label">Minutos restantes (estimativa)</div>
+          </div>
+          <div class="review-card">
+            <h3>Top prioridades</h3>
+            <ul id="resumoTop3" style="list-style: none; margin: 12px 0 0; padding: 0; color: var(--text-secondary); font-size: 0.85rem;">
+              <li>Gere a lista para ver os destaques de hoje.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div id="reviewChartWrapper" style="display: none; margin-bottom: 24px;">
+          <h3 style="color: var(--accent); margin-bottom: 12px;">Distribuição por área</h3>
+          <div id="reviewChart" class="review-chart"></div>
+        </div>
+
+        <div class="table-container" id="filaContainer">
+          <table id="filaTable" class="review-table">
             <thead>
               <tr>
                 <th>Alvo</th>
                 <th>Prioridade</th>
-                <th>Próxima Revisão</th>
-                <th>Estabilidade (dias)</th>
+                <th>S (dias)</th>
+                <th>R(hoje)</th>
+                <th>Overdue</th>
+                <th>Tempo</th>
                 <th>Ações</th>
               </tr>
             </thead>
             <tbody id="filaBody">
-              <tr><td colspan="5" class="empty-state">Clique em "Gerar Fila" para carregar</td></tr>
+              <tr><td colspan="7" class="table-empty">Clique em “Gerar lista” para montar a fila de hoje.</td></tr>
             </tbody>
           </table>
         </div>
-      </div>
 
-      <div class="card">
-        <h2>Registrar Desfecho de Revisão</h2>
-        <form id="formRevisao" onsubmit="return false;">
-          <div class="form-group">
-            <label>Alvo (Área::Subárea)</label>
-            <input type="text" id="revisaoAlvo" placeholder="Ex: Clínica Médica::Cardiologia" required>
-          </div>
-          <div class="form-group">
-            <label>Dias desde a última revisão</label>
-            <input type="number" id="revisaoTDias" min="0" required>
-          </div>
-          <div class="form-group">
-            <label>Acertou?</label>
-            <select id="revisaoAcertou" required>
-              <option value="1">Sim</option>
-              <option value="0">Não</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Dificuldade Percebida</label>
-            <select id="revisaoDif">
-              <option value="1">1 - Muito Fácil</option>
-              <option value="2">2 - Fácil</option>
-              <option value="3" selected>3 - Médio</option>
-              <option value="4">4 - Difícil</option>
-              <option value="5">5 - Muito Difícil</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Tempo Gasto (segundos)</label>
-            <input type="number" id="revisaoTempo" min="0" step="0.1" value="60">
-          </div>
-          <div class="form-group">
-            <label>Observações</label>
-            <textarea id="revisaoObs" placeholder="Anotações sobre a revisão..."></textarea>
-          </div>
-          <button type="button" class="btn btn-success" onclick="salvarRevisao()">Registrar Desfecho</button>
-        </form>
+        <div id="emptyStateRevisoes" class="empty-state" style="display: none;">
+          <p><strong>Nada para revisar hoje! 🥳</strong></p>
+          <p style="margin: 8px 0 16px; color: var(--text-secondary);">Aproveite para revisar o calendário ou antecipar conteúdos.</p>
+          <button class="btn btn-secondary" onclick="abrirCalendarioRevisoes()">📅 Ver calendário</button>
+        </div>
       </div>
     </div>
 
@@ -697,12 +861,55 @@
     </div>
   </div>
 
+  <div class="modal" id="reviewModal">
+    <div class="modal-card">
+      <h3>Concluir revisão</h3>
+      <p id="modalAlvo" style="color: var(--text-secondary); margin-top: 4px;"></p>
+      <div class="form-group">
+        <label>Total de questões</label>
+        <input type="number" id="modalTotal" min="1" value="10">
+      </div>
+      <div class="form-group">
+        <label>Acertos</label>
+        <input type="number" id="modalAcertos" min="0" value="10">
+      </div>
+      <div class="form-group">
+        <label>Tempo gasto (segundos)</label>
+        <input type="number" id="modalTempo" min="10" value="600">
+      </div>
+      <div class="form-group">
+        <label>Dificuldade percebida</label>
+        <select id="modalDif">
+          <option value="1">1 - Muito Fácil</option>
+          <option value="2">2 - Fácil</option>
+          <option value="3" selected>3 - Médio</option>
+          <option value="4">4 - Difícil</option>
+          <option value="5">5 - Muito Difícil</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Flags / observações curtas</label>
+        <input type="text" id="modalFlags" placeholder="Ex: revisar mapa mental">
+      </div>
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea id="modalObs" placeholder="Resumo rápido do que aconteceu"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="fecharReviewModal()">Cancelar</button>
+        <button class="btn btn-success" onclick="enviarReview()">Concluir</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ========================================================================
     // GLOBAL STATE
     // ========================================================================
     let currentSettings = {};
     let reviewQueue = [];
+    let currentReviewDate = '';
+    let currentReviewTarget = null;
 
     // ========================================================================
     // UI UTILITIES
@@ -723,12 +930,21 @@
       setTimeout(() => toast.remove(), 4000);
     }
 
-    function switchPage(pageId) {
+    function switchPage(pageId, tabEl) {
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      
+
       document.getElementById(pageId).classList.add('active');
-      event.target.classList.add('active');
+      let targetTab = tabEl;
+      if (!targetTab && typeof event !== 'undefined') {
+        targetTab = event.currentTarget || event.target;
+      }
+      if (!targetTab) {
+        targetTab = document.querySelector(`.tab[data-page="${pageId}"]`);
+      }
+      if (targetTab) {
+        targetTab.classList.add('active');
+      }
 
       if (pageId === 'dashboard') loadDashboard();
       if (pageId === 'ajustes') loadAjustes();
@@ -991,133 +1207,355 @@
     // ========================================================================
     function gerarFilaHoje() {
       setLoading(true);
-      
-      const timeoutId = setTimeout(function() {
-        setLoading(false);
-        toast('Tempo esgotado ao gerar fila. Tente novamente.', 'warning');
-        document.getElementById('filaBody').innerHTML = 
-          '<tr><td colspan="5" class="empty-state">Erro ao carregar. Clique em "Gerar Fila" novamente.</td></tr>';
-      }, 15000);
-      
+
       google.script.run
         .withSuccessHandler(function(result) {
-          clearTimeout(timeoutId);
           setLoading(false);
-          
+
           if (result && result.ok) {
-            reviewQueue = result.data || [];
-            renderFilaRevisoes(reviewQueue);
-            
-            if (result.count === 0) {
-              toast('✓ Nenhuma revisão vencida hoje. Próximas revisões em breve!', 'success');
+            currentReviewDate = result.date;
+            reviewQueue = (result.items || []).map(function(item) {
+              return Object.assign({}, item);
+            });
+
+            syncLocalFromServer(currentReviewDate, reviewQueue);
+            atualizarResumoRevisoes();
+            renderFilaRevisoes();
+            desenharGraficoRevisoes(reviewQueue);
+
+            const pendentes = reviewQueue.filter(function(item) { return !item.feito; }).length;
+            document.getElementById('kpiRevisoesHoje').textContent = pendentes;
+
+            if (reviewQueue.length === 0) {
+              document.getElementById('filaContainer').style.display = 'none';
+              document.getElementById('emptyStateRevisoes').style.display = 'block';
+              toast('Nenhuma revisão pendente hoje. ✨', 'success');
             } else {
-              toast(`✓ ${result.count} revisão(ões) encontrada(s)`, 'success');
+              document.getElementById('filaContainer').style.display = 'block';
+              document.getElementById('emptyStateRevisoes').style.display = 'none';
+              toast(`Fila atualizada (${reviewQueue.length} item(ns)).`, 'success');
             }
           } else {
-            toast('Erro: ' + (result ? result.error : 'Sem resposta'), 'error');
-            document.getElementById('filaBody').innerHTML = 
-              '<tr><td colspan="5" class="empty-state">Erro ao gerar fila.</td></tr>';
+            document.getElementById('filaBody').innerHTML = '<tr><td colspan="7" class="table-empty">Não foi possível montar a fila.</td></tr>';
+            toast('Erro: ' + (result ? result.error : 'Sem resposta do servidor'), 'error');
           }
         })
         .withFailureHandler(function(error) {
-          clearTimeout(timeoutId);
           setLoading(false);
-          toast('Erro: ' + error.message, 'error');
-          document.getElementById('filaBody').innerHTML = 
-            '<tr><td colspan="5" class="empty-state">Erro de conexão.</td></tr>';
+          document.getElementById('filaBody').innerHTML = '<tr><td colspan="7" class="table-empty">Erro de conexão. Tente novamente.</td></tr>';
+          handleError(error);
         })
         .apiMakeReviewToday();
     }
 
-    function renderFilaRevisoes(queue) {
+    function getLocalReviewStore() {
+      try {
+        return JSON.parse(localStorage.getItem('revisoesDone') || '{}');
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function saveLocalReviewStore(store) {
+      localStorage.setItem('revisoesDone', JSON.stringify(store));
+    }
+
+    function syncLocalFromServer(date, queue) {
+      if (!date) return;
+      const store = getLocalReviewStore();
+      store[date] = {};
+      queue.forEach(function(item) {
+        if (item.feito) {
+          store[date][item.alvo] = true;
+        }
+      });
+      saveLocalReviewStore(store);
+    }
+
+    function setLocalDone(date, alvo, done) {
+      if (!date || !alvo) return;
+      const store = getLocalReviewStore();
+      if (!store[date]) store[date] = {};
+      if (done) {
+        store[date][alvo] = true;
+      } else {
+        delete store[date][alvo];
+      }
+      saveLocalReviewStore(store);
+    }
+
+    function formatNumber(value, decimals) {
+      const num = parseFloat(value);
+      if (isNaN(num)) return '—';
+      return num.toFixed(decimals);
+    }
+
+    function atualizarResumoRevisoes() {
+      const pendentes = reviewQueue.filter(function(item) { return !item.feito; });
+      const tempoTotal = pendentes.reduce(function(acc, item) {
+        return acc + (item.tempoEstMin || 0);
+      }, 0);
+
+      document.getElementById('resumoPendencias').textContent = pendentes.length;
+      document.getElementById('resumoTempo').textContent = tempoTotal > 0 ? `~${tempoTotal} min` : '—';
+
+      const top = reviewQueue.filter(function(item) { return !item.feito; }).slice(0, 3);
+      const topList = document.getElementById('resumoTop3');
+      if (top.length === 0) {
+        topList.innerHTML = '<li>Nenhum item pendente.</li>';
+      } else {
+        topList.innerHTML = top.map(function(item) {
+          return `<li><span class="highlight">${item.prioridade.toFixed(2)}</span> · ${item.alvo}</li>`;
+        }).join('');
+      }
+    }
+
+    function renderFilaRevisoes() {
       const tbody = document.getElementById('filaBody');
       tbody.innerHTML = '';
 
-      if (queue.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="empty-state">Nenhuma revisão pendente hoje</td></tr>';
+      if (!reviewQueue || reviewQueue.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="table-empty">Nenhuma revisão pendente hoje.</td></tr>';
         return;
       }
 
-      queue.forEach((item, idx) => {
-        const row = document.createElement('tr');
-        const proxRevisao = new Date(item.proximaRevisao);
-        const dateStr = proxRevisao.toLocaleDateString('pt-BR');
-        
-        row.innerHTML = `
-          <td>${item.alvo}</td>
-          <td>${item.prioridade.toFixed(3)}</td>
-          <td>${dateStr}</td>
-          <td>${item.estabilidade.toFixed(1)}</td>
-          <td>
-            <button class="btn btn-success btn-small" onclick="marcarFeito('${item.alvo}')">✓ Feito</button>
-          </td>
-        `;
-        tbody.appendChild(row);
+      reviewQueue.forEach(function(item) {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-row-alvo', encodeURIComponent(item.alvo));
+        if (item.feito) {
+          tr.classList.add('done');
+        }
+
+        const alvoTd = document.createElement('td');
+        alvoTd.innerHTML = `<strong>${item.alvo}</strong><br><span class="badge">${item.area || 'Geral'}</span>`;
+        tr.appendChild(alvoTd);
+
+        const prioridadeTd = document.createElement('td');
+        prioridadeTd.textContent = formatNumber(item.prioridade, 3);
+        tr.appendChild(prioridadeTd);
+
+        const sTd = document.createElement('td');
+        sTd.textContent = formatNumber(item.S, 2);
+        if (sTd.textContent === '—') {
+          sTd.title = 'Sem dados de estabilidade';
+        }
+        tr.appendChild(sTd);
+
+        const rTd = document.createElement('td');
+        rTd.textContent = formatNumber(item.Rhoje, 3);
+        rTd.title = 'Probabilidade de lembrar hoje';
+        tr.appendChild(rTd);
+
+        const overdueTd = document.createElement('td');
+        overdueTd.textContent = formatNumber(item.overdue, 3);
+        overdueTd.title = 'Penalidade por atraso';
+        tr.appendChild(overdueTd);
+
+        const tempoTd = document.createElement('td');
+        tempoTd.textContent = item.tempoEstMin ? `~${item.tempoEstMin} min` : '—';
+        tempoTd.title = 'Tempo estimado para concluir';
+        tr.appendChild(tempoTd);
+
+        const actionsTd = document.createElement('td');
+        actionsTd.className = 'actions';
+
+        const iniciarBtn = document.createElement('button');
+        iniciarBtn.className = 'btn btn-secondary btn-small';
+        iniciarBtn.textContent = 'Iniciar';
+        iniciarBtn.addEventListener('click', function() {
+          iniciarReview(item.alvo);
+        });
+        actionsTd.appendChild(iniciarBtn);
+
+        if (item.feito) {
+          const undoBtn = document.createElement('button');
+          undoBtn.className = 'btn btn-warning btn-small';
+          undoBtn.textContent = 'Desfazer';
+          undoBtn.addEventListener('click', function() {
+            desfazerReview(item.alvo);
+          });
+          actionsTd.appendChild(undoBtn);
+
+          const statusTag = document.createElement('span');
+          statusTag.className = 'tag';
+          statusTag.textContent = 'Concluído';
+          actionsTd.appendChild(statusTag);
+        } else {
+          const concluirBtn = document.createElement('button');
+          concluirBtn.className = 'btn btn-success btn-small';
+          concluirBtn.textContent = 'Concluir';
+          concluirBtn.addEventListener('click', function() {
+            abrirReviewModal(item.alvo);
+          });
+          actionsTd.appendChild(concluirBtn);
+        }
+
+        tr.appendChild(actionsTd);
+        tbody.appendChild(tr);
       });
     }
 
-    function marcarFeito(alvo) {
-      setLoading(true);
-      google.script.run
-        .withSuccessHandler(function(result) {
-          if (result.ok) {
-            toast('Marcado como feito!', 'success');
-            document.getElementById('revisaoAlvo').value = alvo;
-            reviewQueue = reviewQueue.filter(r => r.alvo !== alvo);
-            renderFilaRevisoes(reviewQueue);
-          } else {
-            toast('Erro: ' + result.error, 'error');
-          }
-          setLoading(false);
-        })
-        .withFailureHandler(function(error) {
-          handleError(error);
-          setLoading(false);
-        })
-        .apiApplyReviewDone([alvo]);
+    function atualizarItemFeito(alvo, feito) {
+      const item = reviewQueue.find(function(entry) { return entry.alvo === alvo; });
+      if (item) {
+        item.feito = feito;
+      }
+      atualizarResumoRevisoes();
+      renderFilaRevisoes();
+      desenharGraficoRevisoes(reviewQueue);
     }
 
-    function salvarRevisao() {
-      const payload = {
-        alvo: document.getElementById('revisaoAlvo').value.trim(),
-        tDias: parseFloat(document.getElementById('revisaoTDias').value),
-        acertou: parseInt(document.getElementById('revisaoAcertou').value) === 1,
-        difPercebida: parseInt(document.getElementById('revisaoDif').value),
-        tempoSeg: parseFloat(document.getElementById('revisaoTempo').value),
-        obs: document.getElementById('revisaoObs').value.trim()
-      };
+    function abrirReviewModal(alvo) {
+      currentReviewTarget = alvo;
+      const item = reviewQueue.find(function(entry) { return entry.alvo === alvo; });
+      document.getElementById('modalAlvo').textContent = alvo;
 
-      if (!payload.alvo) {
-        toast('Preencha o alvo (Área::Subárea)', 'warning');
+      const tempoSugestao = item && item.tempoEstMin ? item.tempoEstMin * 60 : 600;
+      document.getElementById('modalTotal').value = 10;
+      document.getElementById('modalAcertos').value = 10;
+      document.getElementById('modalTempo').value = Math.max(10, Math.round(tempoSugestao));
+      document.getElementById('modalDif').value = 3;
+      document.getElementById('modalFlags').value = '';
+      document.getElementById('modalObs').value = '';
+
+      document.getElementById('reviewModal').classList.add('active');
+    }
+
+    function fecharReviewModal() {
+      document.getElementById('reviewModal').classList.remove('active');
+      currentReviewTarget = null;
+    }
+
+    function enviarReview() {
+      if (!currentReviewTarget) return;
+
+      const total = parseInt(document.getElementById('modalTotal').value, 10);
+      const acertos = parseInt(document.getElementById('modalAcertos').value, 10);
+      const tempoSeg = parseFloat(document.getElementById('modalTempo').value);
+      const difPercebida = parseInt(document.getElementById('modalDif').value, 10);
+
+      if (!total || total < 1) {
+        toast('Informe o total de questões revisadas.', 'warning');
         return;
       }
 
+      if (acertos > total) {
+        toast('Acertos não pode ser maior que o total.', 'warning');
+        return;
+      }
+
+      const payload = {
+        alvo: currentReviewTarget,
+        total: total,
+        acertos: acertos,
+        tempoSeg: tempoSeg || total * 60,
+        difPercebida: difPercebida,
+        flags: document.getElementById('modalFlags').value.trim(),
+        obs: document.getElementById('modalObs').value.trim()
+      };
+
       setLoading(true);
       google.script.run
         .withSuccessHandler(function(result) {
-          if (result.ok) {
-            toast('Desfecho registrado com sucesso!', 'success');
-            limparFormRevisao();
-            gerarFilaHoje();
-          } else {
-            toast('Erro ao registrar: ' + result.error, 'error');
-          }
           setLoading(false);
+          if (result && result.ok) {
+            toast('Revisão concluída!', 'success');
+            setLocalDone(currentReviewDate, payload.alvo, true);
+            atualizarItemFeito(payload.alvo, true);
+            fecharReviewModal();
+          } else {
+            toast('Erro ao concluir revisão: ' + (result ? result.error : 'Sem resposta'), 'error');
+          }
         })
         .withFailureHandler(function(error) {
-          handleError(error);
           setLoading(false);
+          handleError(error);
         })
-        .apiLogReviewOutcome(payload);
+        .apiApplyReviewDone(payload);
     }
 
-    function limparFormRevisao() {
-      document.getElementById('revisaoAlvo').value = '';
-      document.getElementById('revisaoTDias').value = '';
-      document.getElementById('revisaoAcertou').value = '1';
-      document.getElementById('revisaoDif').value = '3';
-      document.getElementById('revisaoTempo').value = '60';
-      document.getElementById('revisaoObs').value = '';
+    function desfazerReview(alvo) {
+      setLoading(true);
+      google.script.run
+        .withSuccessHandler(function(result) {
+          setLoading(false);
+          if (result && result.ok) {
+            toast('Revisão marcada como pendente novamente.', 'success');
+            setLocalDone(currentReviewDate, alvo, false);
+            atualizarItemFeito(alvo, false);
+          } else {
+            toast('Erro ao desfazer: ' + (result ? result.error : 'Sem resposta'), 'error');
+          }
+        })
+        .withFailureHandler(function(error) {
+          setLoading(false);
+          handleError(error);
+        })
+        .apiApplyReviewDone({ alvo: alvo, undo: true });
+    }
+
+    function iniciarReview(alvo) {
+      const row = document.querySelector(`[data-row-alvo="${encodeURIComponent(alvo)}"]`);
+      if (row) {
+        row.classList.add('highlight-row');
+        setTimeout(function() {
+          row.classList.remove('highlight-row');
+        }, 1200);
+      }
+      toast(`Bons estudos em ${alvo}!`, 'success');
+    }
+
+    function desenharGraficoRevisoes(queue) {
+      const wrapper = document.getElementById('reviewChartWrapper');
+      const chartDiv = document.getElementById('reviewChart');
+      if (!wrapper || !chartDiv) return;
+
+      const areaMap = {};
+      (queue || []).forEach(function(item) {
+        if (item.feito) return;
+        const area = item.area || 'Outras áreas';
+        areaMap[area] = (areaMap[area] || 0) + 1;
+      });
+
+      const areas = Object.keys(areaMap);
+      if (areas.length === 0) {
+        wrapper.style.display = 'none';
+        chartDiv.innerHTML = '';
+        return;
+      }
+
+      const chartData = [['Área', 'Pendências']];
+      areas.forEach(function(area) {
+        chartData.push([area, areaMap[area]]);
+      });
+
+      wrapper.style.display = 'block';
+
+      if (google && google.visualization) {
+        const dataTable = google.visualization.arrayToDataTable(chartData);
+        const options = {
+          backgroundColor: 'transparent',
+          legend: { position: 'right', textStyle: { color: '#cbd5e1' } },
+          pieHole: 0.35,
+          chartArea: { width: '90%', height: '80%' },
+          slices: {}
+        };
+        const chart = new google.visualization.PieChart(chartDiv);
+        chart.draw(dataTable, options);
+      } else {
+        chartDiv.innerHTML = '<div class="empty-state">Gráfico indisponível no momento.</div>';
+      }
+    }
+
+    function abrirCalendarioRevisoes() {
+      const dashboardTab = document.querySelector('.tab[data-page="dashboard"]');
+      switchPage('dashboard', dashboardTab);
+      setTimeout(function() {
+        const calendario = document.getElementById('calendarTable');
+        if (calendario) {
+          calendario.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 200);
     }
 
     // ========================================================================
