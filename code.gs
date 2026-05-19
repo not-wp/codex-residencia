@@ -832,6 +832,27 @@ function calcSobs(t, retentionTarget) {
   return t / (-Math.log(retentionTarget));
 }
 
+function calcEffectiveReviewDelay(tDias, atrasoDias, S, settings) {
+  // Reduz o peso de atraso extremo: após vencer, cada dia extra vale menos
+  // para evitar superestimar memória quando a revisão ficou muito atrasada.
+  const overdueRatio = S > 0 ? (atrasoDias / S) : 0;
+  const k = 1 / (1 + overdueRatio); // quanto maior o atraso relativo, menor o ganho
+  return Math.max(settings.Imin, tDias * k);
+}
+
+function calcRecallQuality(acertou, payload, settings) {
+  // Aceita escala binária (legado) e percentual [0..100] quando informado.
+  const pct = payload.acuraciaPct !== undefined
+    ? parseFloat(payload.acuraciaPct)
+    : (payload.acertoPct !== undefined ? parseFloat(payload.acertoPct) : NaN);
+  
+  if (!isNaN(pct)) {
+    return Math.max(0, Math.min(1, pct / 100));
+  }
+  
+  return acertou ? 1 : 0;
+}
+
 function applyCapS(S, Smin, Smax) {
   return Math.max(Smin, Math.min(Smax, S));
 }
@@ -1169,7 +1190,29 @@ function apiLogReviewOutcome(payload) {
     const S_hat = calcStability(theta0, theta1, theta2, competencia, difNorm);
     
     // Calcular S_obs
-    const S_obs = calcSobs(tDias, metaUsada);
+    const ultimaRevisaoData = spacedRow.ultimaRevisao ? new Date(spacedRow.ultimaRevisao) : null;
+    let atrasoDias = 0;
+    if (ultimaRevisaoData && !isNaN(ultimaRevisaoData.getTime())) {
+      const I_prev = applyCapI(calcOptimalInterval(parseFloat(spacedRow.estabilidade) || settings.Smin, metaUsada), settings.Imin, settings.Imax);
+      const diasDesdeUltima = Math.max(0, Math.floor((hoje - ultimaRevisaoData) / (1000 * 60 * 60 * 24)));
+      atrasoDias = Math.max(0, diasDesdeUltima - Math.round(I_prev));
+    }
+    
+    const tEfetivo = calcEffectiveReviewDelay(
+      tDias,
+      atrasoDias,
+      parseFloat(spacedRow.estabilidade) || settings.Smin,
+      settings
+    );
+    const quality = calcRecallQuality(acertou, payload, settings);
+    const S_obs_bruto = calcSobs(tEfetivo, metaUsada);
+    const mix = Math.max(0, Math.min(1, (parseFloat(settings.planGainMix) || 0.5) * quality));
+    const S_obs = applyCapS(
+      mix * S_obs_bruto +
+      (1 - mix) * (parseFloat(modelRow.S_atual) || settings.Smin),
+      settings.Smin,
+      settings.Smax
+    );
     
     // Atualizar θ (ridge-like)
     const lnS_obs = Math.log(S_obs);
@@ -1184,7 +1227,7 @@ function apiLogReviewOutcome(payload) {
     }
     
     // Aplicar caps em S_obs
-    const S_novo = applyCapS(S_obs, settings.Smin, settings.Smax);
+    const S_novo = S_obs;
     
     // Atualizar MODEL
     const modelSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAMES.MODEL);
@@ -1210,6 +1253,13 @@ function apiLogReviewOutcome(payload) {
     // Calcular próximo intervalo
     let I = calcOptimalInterval(S_novo, metaUsada);
     I = applyCapI(I, settings.Imin, settings.Imax);
+    
+    // Se houve atraso grande, forçar fase de reforço para consolidar novamente.
+    if (atrasoDias > 0) {
+      const atrasoRatio = atrasoDias / Math.max(1, parseFloat(spacedRow.estabilidade) || settings.Smin);
+      const reforco = 1 / (1 + atrasoRatio);
+      I = Math.max(settings.Imin, I * reforco);
+    }
     
     // Reset suave se acerto_7d < 0.5
     if (statRow && parseFloat(statRow.acerto_7d) < 0.5) {
